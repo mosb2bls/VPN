@@ -70,13 +70,14 @@ export const events = {
 	helperStatusChanged: makeEvent<HelperStatusChanged>("helper-status-changed"),
 	nodesChanged: makeEvent<NodesChanged>("nodes-changed"),
 	recoveryCompleted: makeEvent<RecoveryCompleted>("recovery-completed"),
+	restoreReportChanged: makeEvent<RestoreReportChanged>("restore-report-changed"),
 	rulesUpdated: makeEvent<RulesUpdated>("rules-updated"),
 	statusChanged: makeEvent<StatusChanged>("status-changed"),
 	trafficStatsUpdated: makeEvent<TrafficStatsUpdated>("traffic-stats-updated"),
 };
 
 /* Constants */
-export const SPEC_VERSION = "0.2.0" as const;
+export const SPEC_VERSION = "0.3.0" as const;
 
 /* Types */
 /**  The node carrying traffic changed. */
@@ -97,6 +98,8 @@ export type AppError = {
 	fields: FieldError[],
 	/**  Optional redacted technical detail for the logs/diagnostics view. */
 	detail: string | null,
+	/**  Per-item report, always present for `RESTORE_INCOMPLETE` (REQ-4). */
+	restoreReport: RestoreReport | null,
 };
 
 export type AppInfo = {
@@ -130,7 +133,7 @@ export type DiagnosticsExport = {
 
 export type DnsProfile = "mainland" | "overseas";
 
-export type ErrorCode = "NOT_IMPLEMENTED" | "INTERNAL" | "INVALID_ARGUMENT" | "BUSY" | "UNSUPPORTED_PLATFORM" | "NODE_NOT_FOUND" | "NO_NODE_SELECTED" | "NO_NODES" | "NODE_DUPLICATE" | "REORDER_MISMATCH" | "VALIDATION_FAILED" | "LINK_UNSUPPORTED_SCHEME" | "LINK_MALFORMED" | "LINK_UNSUPPORTED_PARAM" | "LINK_MISSING_PARAM" | "LINK_INVALID_VALUE" | "IMPORT_EMPTY" | "CLIPBOARD_EMPTY" | "CLIPBOARD_UNAVAILABLE" | "QR_NOT_FOUND" | "QR_IMAGE_UNREADABLE" | "QR_TOO_MANY_CODES" | "FIELD_REQUIRED" | "FIELD_INVALID" | "FIELD_OUT_OF_RANGE" | "FIELD_INVALID_HOST" | "FIELD_INVALID_PORT" | "FIELD_INVALID_PORT_RANGE" | "FIELD_INVALID_UUID" | "FIELD_INVALID_PUBLIC_KEY" | "FIELD_INVALID_SHORT_ID" | "FIELD_INVALID_FINGERPRINT" | "FIELD_INVALID_PIN" | "FIELD_INVALID_SNI" | "FIELD_INVALID_BANDWIDTH" | "FIELD_TOO_LONG" | "FIELD_CANNOT_CLEAR" | "KEYCHAIN_UNAVAILABLE" | "KEYCHAIN_ACCESS_DENIED" | "SECRET_MISSING" | "CORE_BINARY_MISSING" | "CORE_CHECKSUM_MISMATCH" | "CORE_CONFIG_INVALID" | "CORE_START_FAILED" | "CORE_CRASHED" | "CORE_API_UNREACHABLE" | "PORT_IN_USE" | "DNS_BOOTSTRAP_FAILED" | "NODE_UNREACHABLE" | "NODE_HANDSHAKE_FAILED" | "NODE_AUTH_FAILED" | "PROBE_TIMEOUT" | "PROBE_FAILED" | "ALL_NODES_FAILED" | "SYSTEM_PROXY_SET_FAILED" | "SYSTEM_PROXY_RESTORE_FAILED" | "NETWORK_CHANGED" | "HELPER_NOT_INSTALLED" | "HELPER_INSTALL_CANCELLED" | "HELPER_INSTALL_FAILED" | "HELPER_UNINSTALL_FAILED" | "HELPER_UNREACHABLE" | "HELPER_VERSION_MISMATCH" | "HELPER_AUTH_FAILED" | "TUN_START_FAILED" | "KILL_SWITCH_FAILED" | "KILL_SWITCH_REMOVE_FAILED" | "JOURNAL_CORRUPT" | "RESTORE_INCOMPLETE" | "RULES_DOWNLOAD_FAILED" | "RULES_VALIDATION_FAILED" | "RULES_UPDATE_IN_PROGRESS" | "SETTINGS_INVALID" | "SETTINGS_SAVE_FAILED" | "LAUNCH_AT_LOGIN_FAILED" | "DIAGNOSTICS_EXPORT_FAILED";
+export type ErrorCode = "NOT_IMPLEMENTED" | "INTERNAL" | "INVALID_ARGUMENT" | "BUSY" | "UNSUPPORTED_PLATFORM" | "NODE_NOT_FOUND" | "NO_NODE_SELECTED" | "NO_NODES" | "NODE_DUPLICATE" | "REORDER_MISMATCH" | "VALIDATION_FAILED" | "LINK_UNSUPPORTED_SCHEME" | "LINK_MALFORMED" | "LINK_UNSUPPORTED_PARAM" | "LINK_MISSING_PARAM" | "LINK_INVALID_VALUE" | "IMPORT_EMPTY" | "CLIPBOARD_EMPTY" | "CLIPBOARD_UNAVAILABLE" | "QR_NOT_FOUND" | "QR_IMAGE_UNREADABLE" | "QR_TOO_MANY_CODES" | "FIELD_REQUIRED" | "FIELD_INVALID" | "FIELD_OUT_OF_RANGE" | "FIELD_INVALID_HOST" | "FIELD_INVALID_PORT" | "FIELD_INVALID_PORT_RANGE" | "FIELD_INVALID_UUID" | "FIELD_INVALID_PUBLIC_KEY" | "FIELD_INVALID_SHORT_ID" | "FIELD_INVALID_FINGERPRINT" | "FIELD_INVALID_PIN" | "FIELD_INVALID_SNI" | "FIELD_INVALID_BANDWIDTH" | "FIELD_TOO_LONG" | "FIELD_CANNOT_CLEAR" | "KEYCHAIN_UNAVAILABLE" | "KEYCHAIN_ACCESS_DENIED" | "SECRET_MISSING" | "CORE_BINARY_MISSING" | "CORE_CHECKSUM_MISMATCH" | "CORE_CONFIG_INVALID" | "CORE_START_FAILED" | "CORE_CRASHED" | "CORE_API_UNREACHABLE" | "PORT_IN_USE" | "DNS_BOOTSTRAP_FAILED" | "NODE_UNREACHABLE" | "NODE_HANDSHAKE_FAILED" | "NODE_AUTH_FAILED" | "PROBE_TIMEOUT" | "PROBE_FAILED" | "ALL_NODES_FAILED" | "SYSTEM_PROXY_SET_FAILED" | "SYSTEM_PROXY_RESTORE_FAILED" | "NETWORK_CHANGED" | "HELPER_NOT_INSTALLED" | "HELPER_INSTALL_CANCELLED" | "HELPER_INSTALL_FAILED" | "HELPER_UNINSTALL_FAILED" | "HELPER_UNREACHABLE" | "HELPER_VERSION_MISMATCH" | "HELPER_AUTH_FAILED" | "TUN_START_FAILED" | "KILL_SWITCH_FAILED" | "KILL_SWITCH_REMOVE_FAILED" | "TUN_STOP_FAILED" | "ROUTE_RESTORE_FAILED" | "DNS_RESTORE_FAILED" | "IPV6_RESTORE_FAILED" | "JOURNAL_CORRUPT" | "RESTORE_INCOMPLETE" | "RULES_DOWNLOAD_FAILED" | "RULES_VALIDATION_FAILED" | "RULES_UPDATE_IN_PROGRESS" | "SETTINGS_INVALID" | "SETTINGS_SAVE_FAILED" | "LAUNCH_AT_LOGIN_FAILED" | "DIAGNOSTICS_EXPORT_FAILED";
 
 /**
  *  An error not tied to a command call (background failures).
@@ -353,9 +356,16 @@ export type RecoveryOutcome =
 export type RecoveryReport = {
 	outcome: RecoveryOutcome,
 	at: string,
+	/**  The restore that recovery ran; `None` when the session was re-attached. (REQ-4) */
+	restore: RestoreReport | null,
+	/**
+	 *  DEPRECATED since SPEC 0.3.0 — mirror of `restore.items`; removed in the next
+	 *  major version. Use `restore`.
+	 */
 	actions: RestoreAction[],
 };
 
+/**  DEPRECATED since SPEC 0.3.0 — use [`RestoreItem`]. */
 export type RestoreAction = {
 	/**  Human-readable item, e.g. "System proxy (Wi-Fi)", "pf kill switch". */
 	item: string,
@@ -363,10 +373,84 @@ export type RestoreAction = {
 	message: string | null,
 };
 
+export type RestoreItem = {
+	kind: RestoreItemKind,
+	/**  Display label, e.g. "System proxy". */
+	label: string,
+	/**
+	 *  Display-ready description of what was done or found,
+	 *  e.g. "Restored previous proxy settings on Wi-Fi and Ethernet".
+	 */
+	action: string,
+	result: RestoreResult,
+	/**  Set when `result` is `failed` or `skipped`. */
+	errorCode: ErrorCode | null,
+	/**  Display-ready error message when `result` is `failed` or `skipped`. */
+	errorMessage: string | null,
+};
+
+export type RestoreItemKind = 
+/**  Helper-run sing-box TUN session (stopping it removes the TUN interface). */
+"tun_session" | 
+/**  Routes added for TUN / server bypass. */
+"routes" | 
+/**  DNS servers changed on network services / interfaces. */
+"dns" | 
+/**  IPv6 settings changed on network services / interfaces. */
+"ipv6" | 
+/**  OS system proxy (macOS per network service; Windows WinINet). */
+"system_proxy" | 
+/**  Firewall kill switch (macOS pf anchor; Windows WFP / firewall rules). */
+"firewall";
+
+/**
+ *  Per-item restore report (REQ-4). Produced identically by `disconnect`,
+ *  `restore_networking`, `quit_app`, mode switches and recovery.
+ */
 export type RestoreReport = {
+	at: string,
+	trigger: RestoreTrigger,
+	/**  True only if every item is `restored` or `not_needed`. */
 	fullyRestored: boolean,
+	/**
+	 *  Exactly one entry per `RestoreItemKind`, in execution order:
+	 *  tun_session, routes, dns, ipv6, system_proxy, firewall.
+	 */
+	items: RestoreItem[],
+	/**
+	 *  DEPRECATED since SPEC 0.3.0 — mirror of `items`; removed in the next major
+	 *  version. Use `items`.
+	 */
 	actions: RestoreAction[],
 };
+
+/**
+ *  `Status.lastRestore` changed (a restore finished, or an incomplete report was
+ *  loaded at launch). (REQ-4)
+ */
+export type RestoreReportChanged = {
+	report: RestoreReport,
+};
+
+export type RestoreResult = 
+/**  The app had changed this item and it is now back to its previous value. */
+"restored" | 
+/**  The app had not changed this item; nothing to do. */
+"not_needed" | 
+/**  Restoring was attempted and failed; the item is still changed. */
+"failed" | 
+/**  Could not be attempted (e.g. helper unreachable); the item may still be changed. */
+"skipped";
+
+export type RestoreTrigger = "disconnect" | "restore_networking" | "quit" | 
+/**  Switching routing mode to `direct`. */
+"direct_mode" | 
+/**  Tearing down the old capture mode before starting the new one. */
+"capture_mode_switch" | 
+/**  Launch-time / helper-start recovery from the journal. */
+"recovery" | 
+/**  The `--restore-networking` command-line flag. */
+"command_line";
 
 export type RoutingMode = "rule" | "global" | "direct";
 
@@ -437,6 +521,14 @@ export type Status = {
 	lastError: AppError | null,
 	/**  What happened at the last launch-time or helper-start recovery. */
 	lastRecovery: RecoveryReport | null,
+	/**  Helper-run TUN session currently in effect (REQ-4: actual, not intended). */
+	tunActive: boolean,
+	/**
+	 *  Most recent restore (disconnect, restore_networking, quit, mode switch,
+	 *  recovery). An incomplete report persists across restarts until a later
+	 *  restore completes fully. (REQ-4)
+	 */
+	lastRestore: RestoreReport | null,
 };
 
 /**  Emitted on every connection state or mode change, with the full status. */

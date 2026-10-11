@@ -1,7 +1,7 @@
 # EdgeClient — Backend ↔ UI Interface Specification
 
-**Spec version:** 0.2.0
-**Status:** approved baseline 0.1.0 + REQ-2/REQ-3 (Phase B1)
+**Spec version:** 0.3.0
+**Status:** approved baseline 0.1.0 + REQ-2/REQ-3/REQ-4 (Phase B1)
 **Generated bindings:** `src/api/bindings.ts` (from `src-tauri/src/api/*`, via tauri-specta `=2.0.0-rc.25`)
 
 The Rust types in `src-tauri/src/api/` are the source of truth; this document explains
@@ -12,6 +12,7 @@ the disagreement is a backend bug — file a REQ.
 
 | Version | Date | Change |
 |---|---|---|
+| 0.3.0 | 2026-10-11 | **Additive (REQ-4, owner decision):** per-item restore reporting (§2.7). New: `RestoreItem`, `RestoreItemKind`, `RestoreResult`, `RestoreTrigger`; `RestoreReport.{at, trigger, items}`; `RecoveryReport.restore`; `AppError.restoreReport`; `Status.{tunActive, lastRestore}`; event `restoreReportChanged`; codes `TUN_STOP_FAILED`, `ROUTE_RESTORE_FAILED`, `DNS_RESTORE_FAILED`, `IPV6_RESTORE_FAILED`. **Clarified:** partial restore failure is always the error `RESTORE_INCOMPLETE` (never `ok`), for `disconnect` and `restore_networking` alike. **Deprecated:** `RestoreReport.actions`, `RecoveryReport.actions`, type `RestoreAction` (mirrors; removed in the next major). |
 | 0.2.0 | 2026-10-11 | **Additive (REQ-2):** `TrafficStats.latencyMs`. **Clarifications (REQ-3):** concurrent `test_node` (§2.1), `nodesChanged` after a test (§2.1), connect preconditions leave state unchanged (§2.2), progress text in `statusChanged.reason` (§2.2), `get_logs` polling (§2.6). |
 | 0.1.0 | 2026-10-11 | Initial contract: 32 commands, 10 events, state machine, error codes, Notes for UI. All network/OS commands are stubs (`NOT_IMPLEMENTED`). |
 
@@ -94,7 +95,7 @@ clarification/wording. Each interface change updates this file, the changelog, a
 | Command | Params | Returns | Errors | Elevation | B1 |
 |---|---|---|---|---|---|
 | `connect` | — | `Status` | `NO_NODES`, `NO_NODE_SELECTED`, `CORE_*`, `SYSTEM_PROXY_SET_FAILED`, `HELPER_NOT_INSTALLED`, `HELPER_*`, `TUN_START_FAILED`, `PORT_IN_USE`, `DNS_BOOTSTRAP_FAILED`, `BUSY` | TUN: no (helper already installed) | stub |
-| `disconnect` | — | `Status` | `RESTORE_INCOMPLETE`, `HELPER_UNREACHABLE` | no | returns status |
+| `disconnect` | — | `Status` | `RESTORE_INCOMPLETE` (with `error.restoreReport`, §2.7) | no | returns status |
 | `get_status` | — | `Status` | — | no | placeholder |
 | `set_capture_mode` | `mode: CaptureMode` | `Status` | as `connect` when connected | no | memory |
 | `set_routing_mode` | `mode: RoutingMode` | `Status` | as `connect` when connected | no | memory |
@@ -166,9 +167,9 @@ attempt, scheduled or manual, is also emitted as `rulesUpdated`.
 | `set_settings` | `settings: AppSettings` | `AppSettings` | `VALIDATION_FAILED` (`rulesUpdateIntervalHours` 1–168), `LAUNCH_AT_LOGIN_FAILED`, `SETTINGS_SAVE_FAILED` | no | memory, **validated** |
 | `get_logs` | `limit: number, minLevel: LogLevel \| null` | `LogEntry[]` (oldest first) | — | no | returns `[]` |
 | `export_diagnostics` | — | `DiagnosticsExport` | `DIAGNOSTICS_EXPORT_FAILED` | no | stub |
-| `restore_networking` | — | `RestoreReport` | `HELPER_UNREACHABLE`, `RESTORE_INCOMPLETE` | only if helper is not installed but a TUN/firewall journal exists | stub |
+| `restore_networking` | — | `RestoreReport` (only when fully restored) | `RESTORE_INCOMPLETE` (with `error.restoreReport`, §2.7) | only if helper is not installed but a TUN/firewall journal exists | stub |
 | `get_app_info` | — | `AppInfo` | — | no | **real** |
-| `quit_app` | — | `null` (process exits) | `RESTORE_INCOMPLETE` (app still quits) | no | exits immediately |
+| `quit_app` | — | `null` (process exits) | — (an incomplete restore is persisted, §2.7; the app still quits) | no | exits immediately |
 
 - `get_logs` (REQ-3): polling every ~2 s while a logs view is visible is fine (the
   backend keeps a 2000-entry in-memory ring buffer; `limit` is capped at 1000). There is
@@ -183,6 +184,50 @@ attempt, scheduled or manual, is also emitted as `rulesUpdated`.
   the UI as `EdgeClient --restore-networking`.
 - `quit_app`: disconnect → restore → exit. Exits even if restore is incomplete; the
   journal is kept so the next launch (or helper) finishes the restore.
+
+### 2.7 Restore reporting (REQ-4)
+
+Every operation that puts the OS back — `disconnect`, `restore_networking`, `quit_app`,
+`set_routing_mode(direct)`, `set_capture_mode` while connected (teardown of the old
+mode), launch-time recovery and `--restore-networking` — runs the **same** restore and
+produces the **same** `RestoreReport`:
+
+- `items` has **exactly six entries, always, in this order**: `tun_session`, `routes`,
+  `dns`, `ipv6`, `system_proxy`, `firewall` (the firewall/kill switch goes last so it
+  keeps blocking until everything else is back). Each has a display `label`, a
+  display-ready `action` (what was done or found), a `result` and, if not clean,
+  `errorCode` + `errorMessage`.
+- `result`: `restored` (we had changed it; it is back) · `not_needed` (we had not changed
+  it) · `failed` (attempted, still changed) · `skipped` (could not be attempted, e.g.
+  helper unreachable — may still be changed).
+- `fullyRestored` is true **only** if every item is `restored` or `not_needed`.
+  `failed` and `skipped` both make it incomplete. All items are always attempted; one
+  failure never stops the rest.
+
+**Partial failure is always an error, never `ok`.** `disconnect` and
+`restore_networking` (and the mode setters when they tear down) return
+`error.code = "RESTORE_INCOMPLETE"`, `recoverable: false`, with the full report in
+`error.restoreReport`. On full success, `restore_networking` returns the report and
+`disconnect` returns `Status`; in both cases the report is also in `Status.lastRestore`.
+
+**Latest report:** `Status.lastRestore` always holds the most recent report, and the
+event `restoreReportChanged` fires whenever it changes. An **incomplete** report is
+persisted on disk and reloaded at launch (state `error`, see below) until a later
+restore completes fully; a complete report is not persisted (after a restart
+`lastRestore` is null unless something is still incomplete).
+
+**True state after a partial failure:**
+- `state` is `error` with `lastError.code = "RESTORE_INCOMPLETE"` — never
+  `disconnected` (or `direct`) while any item is not clean.
+- `killSwitchActive`, `systemProxySet` and `tunActive` describe what is **actually** in
+  effect: an item that was held stays `true` unless its own restore result is clean.
+- The state leaves `error` only when a later restore completes fully (`disconnect` or
+  `restore_networking` again → `disconnected`), or when the user connects (see below).
+- `connect` from this state is allowed. The backend keeps the **original** journal (the
+  values captured before the first connect) and never records the half-restored state as
+  "previous", so a later full restore still returns to the true original settings.
+- `quit_app` with an incomplete restore still exits; the journal and report are kept and
+  the next launch (or the helper, for its items) retries in `recovering`.
 
 ## 3. Events (backend → UI)
 
@@ -200,6 +245,7 @@ kebab-case (`status-changed`).
 | `helperStatusChanged` | `{ status: HelperStatus }` | Helper installed/uninstalled/started/stopped/unreachable. |
 | `nodesChanged` | `{ nodes: Node[], selectedNodeId }` | Node list or selection changed by any source (UI, tray, import). |
 | `recoveryCompleted` | `{ report: RecoveryReport }` | Launch-time or helper-start recovery finished. Also stored in `Status.lastRecovery`. |
+| `restoreReportChanged` | `{ report: RestoreReport }` | `Status.lastRestore` changed: any restore finished, or an incomplete report was reloaded at launch (REQ-4, §2.7). |
 | `errorRaised` | `{ error: AppError }` | Background error not tied to a command. `recoverable: false` → user action needed. |
 
 The UI should call `get_status` / `list_nodes` once at startup (events may have fired
@@ -221,7 +267,7 @@ before the listener was attached) and then rely on events.
 | `direct` | Routing mode `direct`: no proxy, normal connectivity, no core. | none | off |
 | `disconnecting` | Stopping core and restoring OS state from the journal. | partial | being removed |
 | `recovering` | At launch/helper start, a journal was found; re-attaching or restoring. | partial | unchanged until decided |
-| `error` | Could not connect or could not recover. See `status.lastError`. If `killSwitchActive` is true, traffic is **blocked** until the user disconnects or uses Restore networking. | maybe | maybe engaged |
+| `error` | Could not connect, or a restore was incomplete (`lastError.code = RESTORE_INCOMPLETE`, details in `lastRestore`, §2.7). If `killSwitchActive` is true, traffic is **blocked** until a restore completes. | maybe (see `killSwitchActive` / `systemProxySet` / `tunActive`) | maybe engaged |
 
 Transitions (trigger → next state):
 
@@ -251,7 +297,10 @@ Transitions (trigger → next state):
 | any proxying state | `set_capture_mode(other)` | `disconnecting` → `connecting` |
 | any proxying state | `set_routing_mode(rule ↔ global)` / `set_dns_profile` | stays (core restarted; brief `reconnecting` possible) |
 | `disconnecting` | restore complete | `disconnected` (or `direct`) |
-| `disconnecting` | restore incomplete | `error` (`RESTORE_INCOMPLETE`, see `lastRecovery`/report) |
+| `disconnecting` | restore incomplete | `error` (`RESTORE_INCOMPLETE`, report in `lastRestore` and `error.restoreReport`) |
+| `error` (restore incomplete) | `disconnect` / `restore_networking` and the restore completes fully | `disconnecting` → `disconnected` |
+| `error` (restore incomplete) | `disconnect` / `restore_networking` and still incomplete | `disconnecting` → `error` (new report) |
+| `error` (restore incomplete) | `connect` | `connecting` (original journal kept, §2.7) |
 | `recovering` | healthy session found (helper kept TUN up) | `connected` (report `reattached`) |
 | `recovering` | journal restored | `disconnected` (report `restored`) |
 | `recovering` | restore incomplete | `error` (report `restore_incomplete`) |
@@ -338,17 +387,21 @@ All types are defined in `bindings.ts`; key semantics:
   `random`, `randomized` (sing-box uTLS list; confirmed in B2).
 - **`Status`** — see §4. `selectedNodeId` = user choice; `activeNodeId` = node carrying
   traffic (null when not proxying); `failover` non-null while on the fallback;
-  `killSwitchActive`, `systemProxySet` report actual OS state held by the app.
+  `killSwitchActive`, `systemProxySet`, `tunActive` report the OS state **actually** in
+  effect (not intended); `lastRestore` = most recent `RestoreReport` (§2.7).
 - **`TrafficStats`** — bytes/s and totals since connect (numbers), active connection
   count, and `latencyMs`: median probe latency of the most recent **passing** health round
   on the active node, or `null` if there has been no round yet or the last round failed
   (REQ-2). It is updated at the probe interval (default 10 s), not every second.
 - **`NodeTestResult`** — `ok`, `latencyMs`, `exitCountry` (ISO 3166-1 alpha-2), `error`.
-- **`RulesStatus`**, **`HelperStatus`**, **`AppSettings`**, **`LogEntry`**, **`AppInfo`**,
-  **`RestoreReport`** / **`RecoveryReport`** (`outcome: reattached | restored |
-  restore_incomplete`, plus per-item `actions`).
-- **`AppError`** — `{ code, message, recoverable, fields, detail }`. Show `message`
-  directly. `detail` is redacted technical text for a "details" disclosure / logs view.
+- **`RestoreReport`** — `{ at, trigger, fullyRestored, items: RestoreItem[6], actions }`
+  (§2.7; `actions` deprecated). **`RecoveryReport`** — `{ outcome: reattached | restored |
+  restore_incomplete, at, restore: RestoreReport | null, actions }` (`restore` is null
+  when re-attached; `actions` deprecated).
+- **`RulesStatus`**, **`HelperStatus`**, **`AppSettings`**, **`LogEntry`**, **`AppInfo`**.
+- **`AppError`** — `{ code, message, recoverable, fields, detail, restoreReport }`. Show
+  `message` directly. `detail` is redacted technical text for a "details" disclosure /
+  logs view. `restoreReport` is set for `RESTORE_INCOMPLETE` (always) and null otherwise.
 
 ## 8. Error codes
 
@@ -364,7 +417,7 @@ patch). Full list, with default messages, in `src-tauri/src/api/error.rs`
 | Keychain | `KEYCHAIN_UNAVAILABLE`, `KEYCHAIN_ACCESS_DENIED`, `SECRET_MISSING` |
 | Core / connection | `CORE_BINARY_MISSING`, `CORE_CHECKSUM_MISMATCH`, `CORE_CONFIG_INVALID`, `CORE_START_FAILED`, `CORE_CRASHED`, `CORE_API_UNREACHABLE`, `PORT_IN_USE`, `DNS_BOOTSTRAP_FAILED`, `NODE_UNREACHABLE`, `NODE_HANDSHAKE_FAILED`, `NODE_AUTH_FAILED`, `PROBE_TIMEOUT`, `PROBE_FAILED`, `ALL_NODES_FAILED`, `SYSTEM_PROXY_SET_FAILED`, `SYSTEM_PROXY_RESTORE_FAILED`, `NETWORK_CHANGED` |
 | Helper / TUN | `HELPER_NOT_INSTALLED`, `HELPER_INSTALL_CANCELLED`, `HELPER_INSTALL_FAILED`, `HELPER_UNINSTALL_FAILED`, `HELPER_UNREACHABLE`, `HELPER_VERSION_MISMATCH`, `HELPER_AUTH_FAILED`, `TUN_START_FAILED`, `KILL_SWITCH_FAILED`, `KILL_SWITCH_REMOVE_FAILED` |
-| Recovery | `JOURNAL_CORRUPT`, `RESTORE_INCOMPLETE` |
+| Recovery | `TUN_STOP_FAILED`, `ROUTE_RESTORE_FAILED`, `DNS_RESTORE_FAILED`, `IPV6_RESTORE_FAILED`, `JOURNAL_CORRUPT`, `RESTORE_INCOMPLETE` (item-level codes appear in `RestoreItem.errorCode`; `SYSTEM_PROXY_RESTORE_FAILED`, `KILL_SWITCH_REMOVE_FAILED`, `HELPER_UNREACHABLE` are also used there) |
 | Rules | `RULES_DOWNLOAD_FAILED`, `RULES_VALIDATION_FAILED`, `RULES_UPDATE_IN_PROGRESS` |
 | App | `SETTINGS_INVALID`, `SETTINGS_SAVE_FAILED`, `LAUNCH_AT_LOGIN_FAILED`, `DIAGNOSTICS_EXPORT_FAILED` |
 
@@ -400,9 +453,12 @@ Things the UI must explain to the user (wording is the UI's choice; substance is
    `--restore-networking` command-line flag for when the UI can't start.
 9. **`direct` routing mode** means no proxy at all; make that state visually distinct
    from `connected`.
-10. **Recovery:** when `lastRecovery` is present after launch, tell the user whether the
-    previous session was re-attached or networking was restored (and anything that could
-    not be restored).
+10. **Recovery and incomplete restores:** when `lastRecovery` is present after launch,
+    tell the user whether the previous session was re-attached or networking was
+    restored. Whenever `lastRestore.fullyRestored` is false (or a command returns
+    `RESTORE_INCOMPLETE`), show **which items** failed or were skipped (from
+    `items`), make clear networking is **not** back to normal, and offer Restore
+    networking again. A partial failure must never look like success.
 11. **Clipboard:** import from clipboard only on explicit user action; the backend never
     reads the clipboard on its own.
 12. **Secrets** are shown masked only; there is no "reveal" command. To change a secret,

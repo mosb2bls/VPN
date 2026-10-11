@@ -72,6 +72,8 @@ impl Default for StubState {
                 failover: None,
                 last_error: None,
                 last_recovery: None,
+                tun_active: false,
+                last_restore: None,
             },
             failover: default_failover_settings(),
             safety: SafetySettings { kill_switch: true, direct_fallback: false, allow_lan: true },

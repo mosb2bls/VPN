@@ -23,7 +23,7 @@ Template:
 ## REQ-1: Tray popover + settings window, positioning, open-at-section
 - From: ui
 - Date: 2026-10-11
-- Status: accepted (scheduled: backend step B1.2, next step; SPEC v0.3.0)
+- Status: accepted (scheduled: backend step B1.3, next step; SPEC v0.4.0 — re-scheduled after REQ-4 by owner)
 - Need: The app lives in the tray/menu bar with two windows (UI prompt §5). Today
   `tauri.conf.json` has one `main` 800×600 window and capabilities target only `main`.
   The UI needs:
@@ -131,7 +131,7 @@ Template:
 ## REQ-4: Clarify how an incomplete restore is reported
 - From: ui
 - Date: 2026-10-11
-- Status: open
+- Status: done (SPEC v0.3.0)
 - Need: (patch-level answer is enough) The UI must show *which* items could not be
   restored (SPEC §9.10, priority 3). Two cases are ambiguous:
   1. `restore_networking` lists `RESTORE_INCOMPLETE` as an error **and** returns
@@ -146,4 +146,28 @@ Template:
   `error` / `lastError = RESTORE_INCOMPLETE`; (2) error only, no item list. Preferred:
   always deliver the item list, e.g. (2) also fills `Status.lastRecovery` (or a new
   `Status.lastRestore: RestoreReport | null`, additive).
-- Response:
+- Response: (backend, 2026-10-11) Owner decided the design; implemented as SPEC v0.3.0
+  (additive + clarification), see SPEC §2.7:
+  1. One report shape for `disconnect`, `restore_networking`, `quit_app`, mode-switch
+     teardown, recovery and `--restore-networking`: `RestoreReport { at, trigger,
+     fullyRestored, items }`, `items` = exactly 6 `RestoreItem`s in order `tun_session,
+     routes, dns, ipv6, system_proxy, firewall`, each `{ kind, label, action, result:
+     restored | not_needed | failed | skipped, errorCode, errorMessage }`.
+  2. Partial failure is **always** `error(RESTORE_INCOMPLETE)` (`recoverable: false`) with
+     the report in the new `AppError.restoreReport` — for `disconnect` and
+     `restore_networking` alike. `fullyRestored` is true only if every item is
+     `restored`/`not_needed`.
+  3. `Status.lastRestore` (new) holds the latest report; event `restoreReportChanged`
+     fires on change; an incomplete report is persisted and reloaded at launch until a
+     later restore completes fully. `RecoveryReport.restore` (new) carries the restore
+     recovery ran.
+  4. After a partial failure `state = error` (`lastError = RESTORE_INCOMPLETE`), never
+     `disconnected`; `killSwitchActive`, `systemProxySet` and new `tunActive` report what
+     is actually in effect.
+  5. Restore logic + partial-failure unit tests are in `crates/core/src/restore.rs`;
+     macOS system test and Windows checklist entries are in `docs/TESTING.md`
+     (run in B2/B3 when real restore steps exist).
+  Deprecated (still filled, removed at the next major): `RestoreReport.actions`,
+  `RecoveryReport.actions`, `RestoreAction` — switch to `items` / `restore`.
+  Your mock/client need: `AppError.restoreReport`, `Status.tunActive` + `lastRestore`,
+  `RestoreReport.at/trigger/items`, `RecoveryReport.restore`, 4 new error codes.

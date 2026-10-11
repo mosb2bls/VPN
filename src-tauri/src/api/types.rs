@@ -12,6 +12,8 @@ use specta::Type;
 
 use super::error::AppError;
 
+pub use edge_core::restore::{RestoreItem, RestoreItemKind, RestoreResult, RestoreTrigger};
+
 // ---------------------------------------------------------------------------
 // Nodes
 // ---------------------------------------------------------------------------
@@ -227,6 +229,12 @@ pub struct Status {
     pub last_error: Option<AppError>,
     /// What happened at the last launch-time or helper-start recovery.
     pub last_recovery: Option<RecoveryReport>,
+    /// Helper-run TUN session currently in effect (REQ-4: actual, not intended).
+    pub tun_active: bool,
+    /// Most recent restore (disconnect, restore_networking, quit, mode switch,
+    /// recovery). An incomplete report persists across restarts until a later
+    /// restore completes fully. (REQ-4)
+    pub last_restore: Option<RestoreReport>,
 }
 
 #[derive(Serialize, Deserialize, Type, Debug, Clone)]
@@ -265,15 +273,20 @@ pub enum RecoveryOutcome {
     RestoreIncomplete,
 }
 
-#[derive(Serialize, Deserialize, Type, Debug, Clone)]
+#[derive(Serialize, Deserialize, Type, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct RecoveryReport {
     pub outcome: RecoveryOutcome,
     pub at: String,
+    /// The restore that recovery ran; `None` when the session was re-attached. (REQ-4)
+    pub restore: Option<RestoreReport>,
+    /// DEPRECATED since SPEC 0.3.0 — mirror of `restore.items`; removed in the next
+    /// major version. Use `restore`.
     pub actions: Vec<RestoreAction>,
 }
 
-#[derive(Serialize, Deserialize, Type, Debug, Clone)]
+/// DEPRECATED since SPEC 0.3.0 — use [`RestoreItem`].
+#[derive(Serialize, Deserialize, Type, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct RestoreAction {
     /// Human-readable item, e.g. "System proxy (Wi-Fi)", "pf kill switch".
@@ -282,11 +295,36 @@ pub struct RestoreAction {
     pub message: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Type, Debug, Clone)]
+/// Per-item restore report (REQ-4). Produced identically by `disconnect`,
+/// `restore_networking`, `quit_app`, mode switches and recovery.
+#[derive(Serialize, Deserialize, Type, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct RestoreReport {
+    pub at: String,
+    pub trigger: RestoreTrigger,
+    /// True only if every item is `restored` or `not_needed`.
     pub fully_restored: bool,
+    /// Exactly one entry per `RestoreItemKind`, in execution order:
+    /// tun_session, routes, dns, ipv6, system_proxy, firewall.
+    pub items: Vec<RestoreItem>,
+    /// DEPRECATED since SPEC 0.3.0 — mirror of `items`; removed in the next major
+    /// version. Use `items`.
     pub actions: Vec<RestoreAction>,
+}
+
+impl From<edge_core::restore::CoreRestoreReport> for RestoreReport {
+    fn from(r: edge_core::restore::CoreRestoreReport) -> Self {
+        let actions = r
+            .items
+            .iter()
+            .map(|i| RestoreAction {
+                item: i.label.clone(),
+                ok: i.result.is_clean(),
+                message: i.error_message.clone().or_else(|| Some(i.action.clone())),
+            })
+            .collect();
+        Self { at: r.at, trigger: r.trigger, fully_restored: r.fully_restored, items: r.items, actions }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -472,5 +510,40 @@ mod tests {
         let q: QrImageSource = serde_json::from_value(json!({"kind": "path", "path": "/a.png"})).unwrap();
         assert!(matches!(q, QrImageSource::Path { .. }));
         assert_eq!(serde_json::to_value(CaptureMode::SystemProxy).unwrap(), "system_proxy");
+    }
+
+    /// REQ-4: a partial failure surfaces as RESTORE_INCOMPLETE with the full
+    /// per-item report attached, and the deprecated `actions` mirror agrees.
+    #[test]
+    fn restore_incomplete_error_carries_per_item_report() {
+        use edge_core::restore::{run_restore, Restorer, StepOutcome};
+        struct DnsFails;
+        impl Restorer for DnsFails {
+            fn restore(&mut self, kind: RestoreItemKind) -> StepOutcome {
+                match kind {
+                    RestoreItemKind::Dns => StepOutcome::Failed {
+                        action: "Restore DNS servers on Wi-Fi".into(),
+                        code: crate::api::error::ErrorCode::DnsRestoreFailed,
+                        detail: None,
+                    },
+                    _ => StepOutcome::NotNeeded { action: "Nothing to restore".into() },
+                }
+            }
+        }
+        let report: RestoreReport =
+            run_restore(&mut DnsFails, RestoreTrigger::Disconnect, "2026-10-11T00:00:00Z".into()).into();
+        let err = crate::api::error::AppError::restore_incomplete(report);
+        let v = serde_json::to_value(&err).unwrap();
+        assert_eq!(v["code"], "RESTORE_INCOMPLETE");
+        assert_eq!(v["recoverable"], false);
+        let r = &v["restoreReport"];
+        assert_eq!(r["fullyRestored"], false);
+        assert_eq!(r["trigger"], "disconnect");
+        assert_eq!(r["items"].as_array().unwrap().len(), 6);
+        assert_eq!(r["items"][2]["kind"], "dns");
+        assert_eq!(r["items"][2]["result"], "failed");
+        assert_eq!(r["items"][2]["errorCode"], "DNS_RESTORE_FAILED");
+        assert_eq!(r["actions"][2]["ok"], false);
+        assert_eq!(r["actions"][0]["ok"], true);
     }
 }

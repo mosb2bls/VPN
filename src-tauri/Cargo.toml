@@ -19,8 +19,8 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde.workspace = true
 serde_json.workspace = true
-edge-core.workspace = true
+edge-core = { workspace = true, features = ["specta"] }
 tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
-specta = { version = "=2.0.0-rc.25", features = ["derive"] }
+specta.workspace = true
 specta-typescript = "=0.0.12"
 thiserror = "2"

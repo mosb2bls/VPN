@@ -7,7 +7,7 @@ use specta::Type;
 use tauri_specta::Event;
 
 use super::error::AppError;
-use super::types::{HelperStatus, Node, RecoveryReport, RulesStatus, Status, TrafficStats};
+use super::types::{HelperStatus, Node, RecoveryReport, RestoreReport, RulesStatus, Status, TrafficStats};
 
 /// Emitted on every connection state or mode change, with the full status.
 #[derive(Serialize, Deserialize, Type, Event, Debug, Clone)]
@@ -118,6 +118,14 @@ pub struct NodesChanged {
 #[serde(rename_all = "camelCase")]
 pub struct RecoveryCompleted {
     pub report: RecoveryReport,
+}
+
+/// `Status.lastRestore` changed (a restore finished, or an incomplete report was
+/// loaded at launch). (REQ-4)
+#[derive(Serialize, Deserialize, Type, Event, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct RestoreReportChanged {
+    pub report: RestoreReport,
 }
 
 /// An error not tied to a command call (background failures).
