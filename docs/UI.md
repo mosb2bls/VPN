@@ -13,8 +13,8 @@ Built against **SPEC v0.3.0**.
 | D4 | Failover between two nodes of the **same protocol**: the dot stays on its tick; only the node name and badge change. |
 | D5 | Colour: ink `#161512`, paper `#F2EEE5` (printed values from the references). Accents sampled: cobalt `#2439BC`, vermilion `#D34F2E`, mustard `#E7C24E`. |
 | D6 | Contrast: vermilion for dot / fills / borders only; `#B8401F` where red text is unavoidable (4.8:1). `ink-muted` ≈ 65 % ink = `#625F58` (≈ 5:1). Mustard only as a fill with ink text. |
-| D8 | **NOT RESTORED** (partial restore, SPEC §2.7): shown whenever `lastRestore.fullyRestored` is false and the app is not proxying; never looks like OFF. Lists each failed/skipped item, offers Retry (Restore networking) and explains `--restore-networking`. Only an engaged kill switch (BLOCKED) ranks above it. |
 | D7 | Popover state list: OFF, CONNECTING, CONNECTED, DEGRADED, FAILING OVER, RECONNECTING, DIRECT, DISCONNECTING, RECOVERING, ERROR, BLOCKED (`killSwitchActive`), HELPER MISSING (TUN + helper not installed). |
+| D8 | **NOT RESTORED** (partial restore, SPEC §2.7): shown whenever `lastRestore.fullyRestored` is false and the app is not proxying; never looks like OFF. Lists each failed/skipped item, offers Retry (Restore networking) and explains `--restore-networking`. Only an engaged kill switch (BLOCKED) ranks above it. |
 
 ## 2. Frontend structure
 
@@ -74,11 +74,73 @@ Marked `// PENDING REQ-n` in code; mock-only until the SPEC version lands.
 |---|---|---|
 | REQ-1 | `openSettings(section)`, `hidePopover()`, `settingsSectionRequested`, `popoverShown`, window labels | `api/types.ts` `PendingWindowApi`, `client.ts` (real: returns `NOT_IMPLEMENTED`), mock engine |
 
-## 3. Dependencies
+## 3. Design tokens (U1.2 — proposed, pending owner approval)
 
-| Package | Why |
+Source of truth: `src/design/tokens.css` (Tailwind v4 `@theme`) and
+`src/design/motion.ts`. Shown on the dev page → **Tokens** tab.
+
+### Colour
+
+| Token | Value | Use | Contrast (vs paper) |
+|---|---|---|---|
+| `paper` | `#F2EEE5` | window background | — |
+| `paper-raised` | `#F7F4EE` | sheets, cards, inputs | — |
+| `ink` | `#161512` | text, frame, primary controls | 15.8:1 |
+| `ink-muted` | `#625F58` | secondary text, metadata | 5.5:1 |
+| `grid` | ink 9 % | grid hairlines | decorative |
+| `line` | ink 20 % | dividers, input borders | decorative |
+| `cobalt` | `#2439BC` | connected, selection, focus | 7.6:1 |
+| `vermilion` | `#D34F2E` | error/blocked: dot, fill, border only | 3.6:1 (non-text OK) |
+| `vermilion-text` | `#B8401F` | red text when unavoidable | 4.8:1 |
+| `mustard` | `#E7C24E` | connecting/degraded: fill + ink text only | 1.5:1 → needs ink outline as a dot |
+
+No text on a vermilion fill (neither ink 4.3:1 nor paper 3.6:1 reaches 4.5:1).
+
+### Type
+
+- **Archivo Variable** (weights 100–900, width 62–125 %): state word, numbers, body.
+- **Mono**: IBM Plex Mono or JetBrains Mono (decision pending).
+- Scale (popover): `label` 10 px mono uppercase +0.14em · `label-lg` 11 · `secondary`
+  12 · `body` 13 · `number` 20 tabular · `state` 30, weight 850, width 82 %.
+- Utilities: `label`, `state-word`, `tabular`, `paper-grain`.
+
+### Space, shape, elevation
+
+- Spacing base 4 px (`--spacing: 4px`; `p-4` = 16 px).
+- Corners 0 or 2 px (`rounded-xs`); borders 1 px; frame 1.5 px.
+- `shadow-sheet`: `0 1px 1px ink/6 %, 0 10px 28px -10px ink/22 %` — paper card only.
+- Paper grain: static SVG fractal noise, 9 % opacity, 180 px tile.
+
+### Frame (`src/ui/Frame.tsx`)
+
+Ink frame 1.5 px; 5 px ticks above the top edge at every grid column; 12 px registration
+dashes 6 px outside each corner; corner labels 12 px outside the frame. Popover
+geometry: frame 288 px wide (26 px side margins), module 24 (12 × 17) or 32 (9 × 12) —
+decision pending.
+
+### Motion
+
+| Token | Value |
 |---|---|
-| react, react-dom | UI framework (scaffold) |
-| @tauri-apps/api | IPC + window label (used only inside `src/api/`) |
+| `fast` / `base` / `slow` / `draw` | 120 / 200 / 320 / 480 ms |
+| enter / move | `cubic-bezier(0.22, 1, 0.36, 1)` |
+| exit | `cubic-bezier(0.4, 0, 1, 1)` |
+| loop | `cubic-bezier(0.65, 0, 0.35, 1)` |
+| stagger | 35 ms per item, max 6 |
+| spring | bounce 0 only |
 
-No new dependencies in U1.1.
+## 4. Dependencies
+
+| Package | Version | Why |
+|---|---|---|
+| react, react-dom | ^19.1 | UI framework (scaffold) |
+| @tauri-apps/api | ^2 | IPC + window label (used only inside `src/api/`) |
+| motion | 13.4.4 | component animation (§7 of the UI prompt) |
+| tailwindcss, @tailwindcss/vite | 4.3.3 (dev) | tokens as theme variables + utilities |
+| @fontsource-variable/archivo | 5.3.0 | Archivo with width axis, bundled locally (OFL) |
+| @fontsource/ibm-plex-mono | 5.3.0 | mono candidate, bundled locally (OFL) |
+| @fontsource-variable/jetbrains-mono | 5.3.0 | mono candidate — removed after the decision (OFL) |
+
+Versions are pinned exactly and were published at least two weeks before install.
+Font licences ship in `public/licenses/` (copied into the app bundle).
+shadcn `components.json` is added with the first Radix/shadcn primitive (U2.3), not before.

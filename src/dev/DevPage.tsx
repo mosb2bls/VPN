@@ -8,9 +8,35 @@ import { useApp } from "../state/store";
 import { DevPanel } from "./DevPanel";
 import { PopoverDebug } from "./PopoverDebug";
 import { SettingsDebug } from "./SettingsDebug";
+import { TokenSheet } from "./TokenSheet";
 import "./dev.css";
 
+type Tab = "windows" | "tokens";
+const tabFromHash = (): Tab => (location.hash === "#tokens" ? "tokens" : "windows");
+
 export function DevPage() {
+  const [tab, setTab] = useState<Tab>(tabFromHash);
+  useEffect(() => {
+    const h = () => setTab(tabFromHash());
+    window.addEventListener("hashchange", h);
+    return () => window.removeEventListener("hashchange", h);
+  }, []);
+  return (
+    <>
+      <nav className="dev-tabs">
+        <a href="#windows" aria-current={tab === "windows"}>
+          Windows
+        </a>
+        <a href="#tokens" aria-current={tab === "tokens"}>
+          Tokens
+        </a>
+      </nav>
+      {tab === "tokens" ? <TokenSheet /> : <Windows />}
+    </>
+  );
+}
+
+function Windows() {
   const [quit, setQuit] = useState(false);
   const bootError = useApp((s) => s.bootError);
   useEffect(() => {

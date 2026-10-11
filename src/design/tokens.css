@@ -1,0 +1,107 @@
+/* EdgeClient design tokens (UI.md §3). Single source for colour, type, space,
+   elevation. Fonts are bundled from node_modules — never loaded at runtime. */
+@import "tailwindcss";
+
+/* Archivo: weight 100–900 + width 62–125 % axes (OFL). */
+@import "@fontsource-variable/archivo/wdth.css";
+/* Mono candidates — one is dropped after the owner picks (U1.2 decision). */
+@import "@fontsource/ibm-plex-mono/latin-400.css";
+@import "@fontsource/ibm-plex-mono/latin-500.css";
+@import "@fontsource/ibm-plex-mono/latin-600.css";
+@import "@fontsource-variable/jetbrains-mono";
+
+@theme {
+  /* Colour — ink on paper; accents carry state only. */
+  --color-paper: #f2eee5;
+  --color-paper-raised: #f7f4ee;
+  --color-ink: #161512;
+  --color-ink-muted: #625f58; /* ≈ 65 % ink on paper, ≈ 5:1 */
+  --color-grid: rgb(22 21 18 / 0.09); /* hairlines */
+  --color-line: rgb(22 21 18 / 0.2); /* dividers, input borders */
+  --color-cobalt: #2439bc; /* connected, selection, focus */
+  --color-vermilion: #d34f2e; /* error / blocked — dot, fill, border only */
+  --color-vermilion-text: #b8401f; /* red text when unavoidable, 4.8:1 */
+  --color-mustard: #e7c24e; /* connecting / degraded — fill only, ink text */
+
+  /* Type */
+  --font-sans: "Archivo Variable", system-ui, sans-serif;
+  --font-display: "Archivo Variable", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --font-mono-alt: "JetBrains Mono Variable", ui-monospace, Menlo, Consolas, monospace;
+
+  --text-label: 10px; /* mono metadata */
+  --text-label--line-height: 12px;
+  --text-label-lg: 11px;
+  --text-label-lg--line-height: 14px;
+  --text-secondary: 12px;
+  --text-secondary--line-height: 16px;
+  --text-body: 13px;
+  --text-body--line-height: 18px;
+  --text-number: 20px;
+  --text-number--line-height: 24px;
+  --text-state: 30px;
+  --text-state--line-height: 32px;
+
+  --tracking-label: 0.14em;
+
+  /* Space: 4 px base (Tailwind multiplies this: p-4 = 16 px). */
+  --spacing: 4px;
+
+  /* Shape */
+  --radius-xs: 2px;
+
+  /* Elevation — paper card with soft, low-contrast shadow (reference 03). */
+  --shadow-sheet: 0 1px 1px rgb(22 21 18 / 0.06), 0 10px 28px -10px rgb(22 21 18 / 0.22);
+
+  /* Motion (mirrors src/design/motion.ts for CSS transitions) */
+  --ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --ease-loop: cubic-bezier(0.65, 0, 0.35, 1);
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+  --duration-draw: 480ms;
+}
+
+@layer base {
+  html {
+    color: var(--color-ink);
+    background: var(--color-paper);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    -webkit-font-smoothing: antialiased;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+  }
+}
+
+@utility label {
+  /* Small uppercase monospace metadata label. */
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  line-height: var(--text-label--line-height);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+@utility state-word {
+  font-family: var(--font-display);
+  font-size: var(--text-state);
+  line-height: var(--text-state--line-height);
+  font-weight: 850;
+  font-stretch: 82%;
+  letter-spacing: -0.005em;
+  text-transform: uppercase;
+}
+
+@utility tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* Paper grain: static fractal noise, multiplied onto paper. No animation. */
+@utility paper-grain {
+  background-color: var(--color-paper);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.086  0 0 0 0 0.082  0 0 0 0 0.071  0 0 0 0.55 0'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='0.09'/></svg>");
+  background-size: 180px 180px;
+}
