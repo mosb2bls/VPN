@@ -14,6 +14,7 @@ pub const APP_SLUG: &str = "edgeclient";
 
 pub mod error_code;
 pub mod link;
+pub mod qr;
 pub mod restore;
 pub mod secret;
 pub mod validate;

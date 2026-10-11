@@ -1,6 +1,6 @@
 # EdgeClient — Backend ↔ UI Interface Specification
 
-**Spec version:** 1.1.0
+**Spec version:** 1.1.1
 **Status:** approved; includes REQ-1 to REQ-4 (Phase B1). "1.0.0" marks a breaking change, not feature completeness — most commands are still stubs.
 **Generated bindings:** `src/api/bindings.ts` (from `src-tauri/src/api/*`, via tauri-specta `=2.0.0-rc.25`)
 
@@ -12,6 +12,7 @@ the disagreement is a backend bug — file a REQ.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.1.1 | 2026-10-12 | **Behaviour/clarification (B2.3):** `import_qr_image` is real (local decode, limits in §2.1); `statusChanged` is now also emitted whenever import / add / delete changes the selected node. No type changes. |
 | 1.1.0 | 2026-10-12 | **Additive:** `Node.secretMissing`. **Behaviour (B2.2):** node commands and all preference setters are now real and persisted (§2.9); the two `[placeholder]` nodes are gone (empty list until the user imports). `import_qr_image`, connect/test and OS-level commands are still `NOT_IMPLEMENTED`. |
 | 1.0.1 | 2026-10-11 | **Clarification:** exact import rules for share links (§2.1.1): accepted parameters per scheme, rejected ones (incl. HY2 `pinSHA256` and `ech`, VLESS `pqv`, non-raw transports), IPv6 server literals rejected (IPv4-only), `type=raw` = `tcp`, `mport` / `upmbps` / `downmbps` accepted; `pinSha256` in forms must be null for now. No type changes. |
 | 1.0.0 | 2026-10-11 | **Breaking (owner-approved):** removed deprecated `RestoreReport.actions`, `RecoveryReport.actions` and type `RestoreAction` — use `items` / `restore`. **Additive (REQ-1):** windows `popover` + `settings` and tray (§2.8); commands `hide_popover`, `open_settings(section)`, `reveal_diagnostics`; type `SettingsSection`; events `settingsSectionRequested`, `popoverShown`; codes `DIAGNOSTICS_NOT_FOUND`, `WINDOW_UNAVAILABLE`. |
@@ -60,7 +61,7 @@ clarification/wording. Each interface change updates this file, the changelog, a
 | `list_nodes` | — | `Node[]` (user order) | — | no | **real** |
 | `import_links` | `text: string` | `ImportResult` | `IMPORT_EMPTY`, `KEYCHAIN_*`, `SETTINGS_SAVE_FAILED` (+ per-line errors in result) | no | **real** |
 | `import_from_clipboard` | — | `ImportResult` | `CLIPBOARD_EMPTY`, `CLIPBOARD_UNAVAILABLE`, `IMPORT_EMPTY`, `KEYCHAIN_*` | no | **real** |
-| `import_qr_image` | `source: QrImageSource` | `ImportResult` | `QR_NOT_FOUND`, `QR_IMAGE_UNREADABLE`, `QR_TOO_MANY_CODES` | no | stub (B2.3) |
+| `import_qr_image` | `source: QrImageSource` | `ImportResult` | `QR_NOT_FOUND`, `QR_IMAGE_UNREADABLE`, `QR_TOO_MANY_CODES`, `KEYCHAIN_*` | no | **real** |
 | `add_node_manual` | `form: NodeForm` | `Node` | `VALIDATION_FAILED` (with `fields`), `NODE_DUPLICATE`, `KEYCHAIN_*`, `SETTINGS_SAVE_FAILED` | no | **real** |
 | `update_node` | `id: string, form: NodeForm` | `Node` | `NODE_NOT_FOUND`, `VALIDATION_FAILED`, `NODE_DUPLICATE`, `KEYCHAIN_*`, `SETTINGS_SAVE_FAILED` | no | **real** |
 | `delete_node` | `id: string` | `null` | `NODE_NOT_FOUND`, `BUSY` (node is active), `SETTINGS_SAVE_FAILED` | no | **real** |
@@ -75,6 +76,13 @@ clarification/wording. Each interface change updates this file, the changelog, a
   `LINK_MISSING_PARAM`, `LINK_INVALID_VALUE`, `NODE_DUPLICATE`). Unsupported parameters
   are **rejected, never silently ignored**. The command itself only fails (`IMPORT_EMPTY`)
   if the input has no non-blank lines.
+- **QR** (`import_qr_image`): decoded locally (no network). PNG or JPEG, ≤ 15 MB, ≤ 10000 px
+  per side. `{kind:"path"}` needs an absolute path to a regular file (e.g. a drag-and-drop
+  path); `{kind:"bytes"}` takes base64 or a `data:image/…;base64,` URL. The image must
+  contain exactly one QR code (the same code repeated counts as one); its text is then
+  imported like `import_links` (so per-line errors appear in `ImportResult.errors`).
+- **Selection:** when import / add / delete changes the selected node, both `nodesChanged`
+  and `statusChanged` are emitted.
 - **Clipboard** is read only inside `import_from_clipboard`, i.e. only when the user
   explicitly clicks an import-from-clipboard control. The backend never reads it otherwise.
 - **Duplicate** = same protocol + server + port + credential (UUID or password).
@@ -589,8 +597,8 @@ Things the UI must explain to the user (wording is the UI's choice; substance is
 13. **Secrets** are shown masked only; there is no "reveal" command. To change a secret,
     the user re-enters it.
 14. **Real data (B2.2):** the node list starts **empty** and is persisted; there are no
-    placeholder nodes any more. Show an empty state with import actions. Connect, test, QR
-    import, helper, rules update, diagnostics and restore still return `NOT_IMPLEMENTED`.
+    placeholder nodes any more. Show an empty state with import actions. Connect, test, helper,
+    rules update, diagnostics and restore still return `NOT_IMPLEMENTED`.
 15. **`secretMissing` nodes:** show a clear "credentials missing — edit to re-enter"
     state; disable Connect/Test for them.
 16. **Keychain prompt (macOS):** the first save, and the first launch after the app

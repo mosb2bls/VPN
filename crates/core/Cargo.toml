@@ -12,9 +12,12 @@ specta = ["dep:specta"]
 
 [dependencies]
 base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 percent-encoding = "2"
+rqrr = "0.11"
 serde.workspace = true
 specta = { workspace = true, optional = true }
 
 [dev-dependencies]
+qrcode = "0.14.1"
 serde_json.workspace = true

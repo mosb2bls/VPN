@@ -122,15 +122,25 @@ pub async fn list_nodes(app: AppHandle) -> ApiResult<Vec<Node>> {
 
 /// Import + notify, shared by text / clipboard / QR import.
 fn import_text(app: &AppHandle, text: &str) -> ApiResult<ImportResult> {
-    let result = with_state(app, |st| {
+    let (result, selection_changed) = with_state(app, |st| {
         let r = st.nodes.import(text)?;
-        st.status.selected_node_id = st.nodes.selected_id();
-        Ok(r)
+        Ok((r, sync_selection(st)))
     })?;
     if !result.added.is_empty() {
         notify_nodes(app);
     }
+    if selection_changed {
+        notify_status(app, None);
+    }
     Ok(result)
+}
+
+/// Copy the store's selection into `status`; true if it changed.
+fn sync_selection(st: &mut AppData) -> bool {
+    let selected = st.nodes.selected_id();
+    let changed = st.status.selected_node_id != selected;
+    st.status.selected_node_id = selected;
+    changed
 }
 
 /// Parse one or more share links (one per line) and add the valid ones.
@@ -157,20 +167,53 @@ pub async fn import_from_clipboard(app: AppHandle) -> ApiResult<ImportResult> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn import_qr_image(source: QrImageSource) -> ApiResult<ImportResult> {
-    let _ = source;
-    Err(AppError::not_implemented("import_qr_image"))
+pub async fn import_qr_image(app: AppHandle, source: QrImageSource) -> ApiResult<ImportResult> {
+    let bytes = qr_source_bytes(source)?;
+    // Decoding can take a moment on large images; keep it off the async workers.
+    let text = tauri::async_runtime::spawn_blocking(move || edge_core::qr::decode_qr(&bytes))
+        .await
+        .map_err(|_| AppError::new(ErrorCode::Internal).with_detail("QR decode task failed"))?
+        .map_err(AppError::new)?;
+    import_text(&app, &text)
+}
+
+fn qr_source_bytes(source: QrImageSource) -> ApiResult<Vec<u8>> {
+    use base64::Engine;
+    let unreadable = |detail: &str| AppError::new(ErrorCode::QrImageUnreadable).with_detail(detail.to_string());
+    match source {
+        QrImageSource::Path { path } => {
+            let path = std::path::PathBuf::from(path);
+            if !path.is_absolute() {
+                return Err(unreadable("path must be absolute"));
+            }
+            let meta = std::fs::metadata(&path).map_err(|_| unreadable("file not found or not readable"))?;
+            if !meta.is_file() || meta.len() as usize > edge_core::qr::MAX_IMAGE_BYTES {
+                return Err(unreadable("not a regular file, or larger than 15 MB"));
+            }
+            std::fs::read(&path).map_err(|_| unreadable("file could not be read"))
+        }
+        QrImageSource::Bytes { base64 } => {
+            // Accept a bare base64 string or a data URL (`data:image/png;base64,...`).
+            let b64 = base64.split_once("base64,").map(|(_, b)| b).unwrap_or(&base64).trim();
+            if b64.len() > edge_core::qr::MAX_IMAGE_BYTES * 4 / 3 + 4 {
+                return Err(unreadable("larger than 15 MB"));
+            }
+            base64::engine::general_purpose::STANDARD.decode(b64).map_err(|_| unreadable("invalid base64"))
+        }
+    }
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn add_node_manual(app: AppHandle, form: NodeForm) -> ApiResult<Node> {
-    let node = with_state(&app, |st| {
+    let (node, selection_changed) = with_state(&app, |st| {
         let n = st.nodes.add(&form)?;
-        st.status.selected_node_id = st.nodes.selected_id();
-        Ok(n)
+        Ok((n, sync_selection(st)))
     })?;
     notify_nodes(&app);
+    if selection_changed {
+        notify_status(&app, None);
+    }
     Ok(node)
 }
 
@@ -188,10 +231,7 @@ pub async fn delete_node(app: AppHandle, id: String) -> ApiResult<()> {
     let selection_changed = with_state(&app, |st| {
         // TODO(B2.4): refuse with BUSY while this node carries traffic.
         st.nodes.delete(&id)?;
-        let selected = st.nodes.selected_id();
-        let changed = st.status.selected_node_id != selected;
-        st.status.selected_node_id = selected;
-        Ok(changed)
+        Ok(sync_selection(st))
     })?;
     notify_nodes(&app);
     if selection_changed {
@@ -513,6 +553,26 @@ pub(crate) fn validate_failover(s: &FailoverSettings, node_ids: &[&str]) -> Vec<
 mod tests {
     use super::*;
     use crate::store::prefs::default_failover_settings;
+
+    #[test]
+    fn qr_sources() {
+        let code = |r: ApiResult<Vec<u8>>| r.unwrap_err().code;
+        assert_eq!(
+            qr_source_bytes(QrImageSource::Bytes { base64: "data:image/png;base64,aGVsbG8=".into() }).unwrap(),
+            b"hello"
+        );
+        assert_eq!(qr_source_bytes(QrImageSource::Bytes { base64: "aGVsbG8=".into() }).unwrap(), b"hello");
+        assert_eq!(code(qr_source_bytes(QrImageSource::Bytes { base64: "%%%".into() })), ErrorCode::QrImageUnreadable);
+        assert_eq!(code(qr_source_bytes(QrImageSource::Path { path: "relative.png".into() })), ErrorCode::QrImageUnreadable);
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("missing.png").to_string_lossy().into_owned();
+        assert_eq!(code(qr_source_bytes(QrImageSource::Path { path: missing })), ErrorCode::QrImageUnreadable);
+        let dir_path = dir.path().to_string_lossy().into_owned();
+        assert_eq!(code(qr_source_bytes(QrImageSource::Path { path: dir_path })), ErrorCode::QrImageUnreadable);
+        let f = dir.path().join("a.png");
+        std::fs::write(&f, b"bytes").unwrap();
+        assert_eq!(qr_source_bytes(QrImageSource::Path { path: f.to_string_lossy().into_owned() }).unwrap(), b"bytes");
+    }
 
     #[test]
     fn default_failover_settings_are_valid() {

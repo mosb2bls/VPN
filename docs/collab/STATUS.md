@@ -4,11 +4,10 @@ Each agent edits only its own section.
 
 ## Backend
 
-- **Phase/step:** B2.2 — node store (keychain + JSON) and preferences persistence, node
-  commands wired (done, awaiting owner review). Next: B2.3 QR import; then sing-box
-  download/verify script, config generation, system proxy mode, harness.
-- **SPEC version:** 1.1.0 (`docs/SPEC.md`, `src/api/bindings.ts`)
-- **Real:** node list / import (text + clipboard) / add / update / delete / reorder /
+- **Phase/step:** B2.3 — QR import (done, awaiting owner review). Next: B2.4 sing-box
+  download/verify script (pinned 1.14.3), then config generation, system proxy mode, harness.
+- **SPEC version:** 1.1.1 (`docs/SPEC.md`, `src/api/bindings.ts`)
+- **Real:** node list / import (text + clipboard + QR image) / add / update / delete / reorder /
   select, persisted (`nodes.json` + one OS keychain item); all settings getters/setters
   persisted (`settings.json`); mode setters persisted; `get_app_info`; windows + tray
   (REQ-1); link parsing/validation; restore orchestration logic (unit-tested, no OS steps).
@@ -16,7 +15,7 @@ Each agent edits only its own section.
   failover/safety settings (B3/B4).
 - **Placeholder data:** `get_rules_status`, `get_helper_status` (not installed),
   `get_logs` (empty). No placeholder nodes any more.
-- **Stubbed (`NOT_IMPLEMENTED`):** `import_qr_image`, `test_node`, `connect`,
+- **Stubbed (`NOT_IMPLEMENTED`):** `test_node`, `connect`,
   `update_rules_now`, install/uninstall helper, `export_diagnostics`,
   `restore_networking`. `--restore-networking` CLI flag not yet implemented.
 - **Events emitted:** `nodesChanged`, `statusChanged`, `errorRaised` (tray failures,
