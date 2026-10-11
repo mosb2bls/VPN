@@ -1,4 +1,5 @@
 pub mod api;
+mod core_bin;
 mod shell;
 mod state;
 mod store;

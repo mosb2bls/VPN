@@ -1,6 +1,6 @@
 # EdgeClient — Backend ↔ UI Interface Specification
 
-**Spec version:** 1.1.1
+**Spec version:** 1.1.2
 **Status:** approved; includes REQ-1 to REQ-4 (Phase B1). "1.0.0" marks a breaking change, not feature completeness — most commands are still stubs.
 **Generated bindings:** `src/api/bindings.ts` (from `src-tauri/src/api/*`, via tauri-specta `=2.0.0-rc.25`)
 
@@ -12,6 +12,7 @@ the disagreement is a backend bug — file a REQ.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.1.2 | 2026-10-12 | **Behaviour (B2.4):** `get_app_info().coreVersion` now returns the pinned sing-box version (`"1.14.3"`); `CORE_BINARY_MISSING` / `CORE_CHECKSUM_MISMATCH` semantics clarified (§7). No type changes. |
 | 1.1.1 | 2026-10-12 | **Behaviour/clarification (B2.3):** `import_qr_image` is real (local decode, limits in §2.1); `statusChanged` is now also emitted whenever import / add / delete changes the selected node. No type changes. |
 | 1.1.0 | 2026-10-12 | **Additive:** `Node.secretMissing`. **Behaviour (B2.2):** node commands and all preference setters are now real and persisted (§2.9); the two `[placeholder]` nodes are gone (empty list until the user imports). `import_qr_image`, connect/test and OS-level commands are still `NOT_IMPLEMENTED`. |
 | 1.0.1 | 2026-10-11 | **Clarification:** exact import rules for share links (§2.1.1): accepted parameters per scheme, rejected ones (incl. HY2 `pinSHA256` and `ech`, VLESS `pqv`, non-raw transports), IPv6 server literals rejected (IPv4-only), `type=raw` = `tcp`, `mport` / `upmbps` / `downmbps` accepted; `pinSha256` in forms must be null for now. No type changes. |
@@ -530,6 +531,10 @@ All types are defined in `bindings.ts`; key semantics:
   **`RecoveryReport`** — `{ outcome: reattached | restored | restore_incomplete, at,
   restore: RestoreReport | null }` (`restore` is null when re-attached).
 - **`RulesStatus`**, **`HelperStatus`**, **`AppSettings`**, **`LogEntry`**, **`AppInfo`**.
+- **`AppInfo.coreVersion`** — pinned sing-box version (`scripts/sing-box.lock.json`), e.g.
+  `"1.14.3"`. The app only runs the bundled binary whose SHA-256 matches the hash embedded
+  at build time: a missing binary → `CORE_BINARY_MISSING` (recoverable after reinstall); a
+  hash mismatch → `CORE_CHECKSUM_MISMATCH` (`recoverable: false`). See ADR-0002.
 - **`AppError`** — `{ code, message, recoverable, fields, detail, restoreReport }`. Show
   `message` directly. `detail` is redacted technical text for a "details" disclosure /
   logs view. `restoreReport` is set for `RESTORE_INCOMPLETE` (always) and null otherwise.

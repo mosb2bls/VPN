@@ -486,7 +486,7 @@ pub async fn get_app_info() -> ApiResult<AppInfo> {
         app_name: edge_core::APP_NAME.into(),
         app_version: env!("CARGO_PKG_VERSION").into(),
         spec_version: super::SPEC_VERSION.into(),
-        core_version: None,
+        core_version: Some(crate::core_bin::CORE_VERSION.into()),
         platform: if cfg!(target_os = "macos") {
             Platform::Macos
         } else if cfg!(target_os = "windows") {
