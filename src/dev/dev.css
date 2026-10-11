@@ -110,3 +110,4 @@ body { margin: 0; background: var(--d-bg); }
 .dbg-activity li[data-tone="warn"] { color: var(--d-warn); }
 .dbg-activity li[data-tone="error"] { color: var(--d-err); }
 figcaption .dev-link { border: none; background: none; padding: 0; font: inherit; letter-spacing: inherit; text-decoration: underline; cursor: pointer; color: var(--d-mute); }
+.dev-tray { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; font: 11px/1.6 var(--d-mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--d-mute); background: var(--d-bg); border: 1px dashed var(--d-line); cursor: pointer; }

@@ -31,3 +31,20 @@ export const t = {
   draw: { duration: duration.draw, ease: ease.enter },
   exit: { duration: duration.fast, ease: ease.exit },
 } satisfies Record<string, Transition>;
+
+/**
+ * Motion moment 1 — popover open (UI.md §5). Everything finishes by ~0.38 s:
+ * paper fades in, the frame outline draws, ticks fade in left → right, corner
+ * labels follow, content settles 6 px upward. Hide is a quick fade.
+ */
+export const openTimeline = {
+  paper: { duration: duration.fast, ease: ease.enter },
+  frame: { delay: 0.02, duration: 0.34, ease: ease.enter },
+  ticks: { delay: 0.1, step: 0.014, duration: duration.fast, ease: ease.enter },
+  labels: { delay: 0.16, duration: duration.base, ease: ease.enter },
+  content: { delay: 0.1, duration: 0.28, ease: ease.enter },
+  /** px the content settles upward. Kept out of `content`: a `y` key in a
+   *  transition is read as a per-property override (→ default spring). */
+  contentShift: 6,
+  hide: { duration: duration.fast, ease: ease.exit },
+} as const;

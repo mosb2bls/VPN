@@ -31,6 +31,8 @@ Built against **SPEC v1.1.1**.
 | D23 | Empty node list: word OFF, sub "No nodes yet", info notice with Import from clipboard / Open settings, primary ADD NODE. |
 | D24 | `secretMissing` node: info-warn notice "Credentials missing — edit to re-enter", CONNECT disabled, "No creds" next to the node; Test skips it. |
 | D25 | Node switcher sheet: paper-raised card (`shadow-sheet`) over a 70 % paper wash; rows 48 px — name, mono sub-line `PROTOCOL · server:port` (or "carrying traffic"), latency / Testing… / Failed / Untested / No creds on the right; cobalt bar marks the selected node. Footer: TEST ALL, MANAGE NODES. ↑/↓, Enter, Esc. |
+| D26 | Motion without the dot (supersedes the dot parts of prompt §6.5 / §7.2 moments 2–3): connect/disconnect = state word slides up and fades into its new colour, primary button fill changes smoothly; failover = word turns amber, node name + protocol badge slide to the new node, reason line fades in. The frame-bow idea is dropped. |
+| D27 | DIRECT stays as hollow outlined letters. |
 | D8 | **NOT RESTORED** (partial restore, SPEC §2.7): shown whenever `lastRestore.fullyRestored` is false and the app is not proxying; never looks like OFF. Lists each failed/skipped item, offers Retry (Restore networking) and explains `--restore-networking`. Only an engaged kill switch (BLOCKED) ranks above it. |
 
 ## 2. Frontend structure
@@ -188,7 +190,28 @@ state; HELPER MISSING replaces OFF in TUN without helper).
 | BLOCKED | BLOCKED | vermilion, dropped | reason | DISCONNECT | error + Restore networking |
 | NOT RESTORED | NOT RESTORED | vermilion, retracted | Network settings are not back to normal | RESTORE NETWORKING | error: failed items + Details |
 
-## 4. Dependencies
+## 5. Motion moments
+
+### 1. Popover open (U2.4.1)
+
+Tokens: `openTimeline` in `src/design/motion.ts`. Plays on mount and on every
+`popoverShown` (the whole popover is re-keyed). Measured in the browser: complete at
+≈ 380 ms, content offset eases 6 → 0 px with no overshoot.
+
+| Element | Start | Duration | Easing |
+|---|---|---|---|
+| Paper (whole popover) opacity 0 → 1 | 0 | 120 ms | enter |
+| Frame outline draws (pathLength 0 → 1, from top-left, clockwise) | 20 ms | 340 ms | enter |
+| Ticks fade in, left → right | 100 ms + 14 ms × i | 120 ms | enter |
+| Registration dashes | after the last tick | 120 ms | enter |
+| Corner labels | 160 ms | 200 ms | enter |
+| Content: opacity 0 → 1, y 6 → 0 px | 100 ms | 280 ms | enter |
+| Hide (Esc): opacity → 0, then `hidePopover()` | 0 | 120 ms | exit |
+
+On window blur (the OS hides the popover) the content is parked at opacity 0 instantly, so
+the next show starts blank instead of flashing the previous frame.
+
+## 6. Dependencies
 
 | Package | Version | Why |
 |---|---|---|

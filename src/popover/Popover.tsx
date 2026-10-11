@@ -12,7 +12,9 @@
 //   row  16    last event
 //   row  17    footer: settings · restore networking · quit
 import { useEffect, useState, type ReactNode } from "react";
-import { commands } from "../api/client";
+import { motion } from "motion/react";
+import { commands, on, windowLabel } from "../api/client";
+import { openTimeline } from "../design/motion";
 import type { CaptureMode, ImportResult, RoutingMode, Status } from "../api/bindings";
 import type { Result } from "../api/types";
 import { protocolBadge, rate, since, transport } from "../lib/format";
@@ -59,11 +61,31 @@ export function Popover() {
   /** Outcome of the last action taken in the popover (shown in the "Last" row). */
   const [actionNote, setActionNote] = useState<{ text: string; tone: "error" | "warn" | "info" } | null>(null);
 
+  // Motion moment 1: every show from the tray replays the open sequence.
+  const [openSeq, setOpenSeq] = useState(0);
+  /** "esc": fade out, then ask the backend to hide. "blur": the OS already hid us — park invisible. */
+  const [hiding, setHiding] = useState<null | "esc" | "blur">(null);
+  useEffect(() => {
+    let off: (() => void) | undefined;
+    void on("popoverShown", () => {
+      setSheet(false);
+      setHiding(null);
+      setOpenSeq((n) => n + 1);
+    }).then((u) => (off = u));
+    return () => off?.();
+  }, []);
+
   // Esc hides the popover (SPEC §2.8). The sheet stops its own Esc first.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && void commands.hidePopover();
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setHiding("esc");
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    // Only the real popover window hides on blur; the dev page must not.
+    const onBlur = () => windowLabel() === "popover" && setHiding((h) => h ?? "blur");
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("blur", onBlur);
+    };
   }, []);
 
   const run = async (p: Promise<Result<unknown>>) => {
@@ -109,8 +131,17 @@ export function Popover() {
         : "text-ink";
 
   return (
-    <div className="relative" style={{ width: 340, height: 480 }}>
+    <motion.div
+      key={openSeq}
+      className="relative"
+      style={{ width: 340, height: 480 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: hiding ? 0 : 1 }}
+      transition={hiding === "blur" ? { duration: 0 } : hiding ? openTimeline.hide : openTimeline.paper}
+      onAnimationComplete={() => hiding === "esc" && void commands.hidePopover()}
+    >
       <Frame
+        animate
         width={340}
         height={480}
         module={24}
@@ -220,7 +251,7 @@ export function Popover() {
       {sheet && status && (
         <NodeSheet nodes={nodes} selectedId={status.selectedNodeId} activeId={status.activeNodeId} onClose={() => setSheet(false)} />
       )}
-    </div>
+    </motion.div>
   );
 }
 

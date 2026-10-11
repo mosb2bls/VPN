@@ -40,6 +40,19 @@ export function DevPage() {
 function Windows() {
   const [quit, setQuit] = useState(false);
   const [debug, setDebug] = useState(false);
+  // Simulated tray: hidePopover hides it, the tray button shows it (popoverShown).
+  const [hidden, setHidden] = useState(false);
+  useEffect(
+    () =>
+      mockEngine.onAny((name) => {
+        if (name.includes("hidePopover")) setHidden(true);
+      }),
+    [],
+  );
+  const trayClick = () => {
+    setHidden(false);
+    mockEngine.emitPopoverShown();
+  };
   const bootError = useApp((s) => s.bootError);
   useEffect(() => {
     mockEngine.onQuit = () => setQuit(true);
@@ -64,6 +77,14 @@ function Windows() {
             <button className="dev-link" onClick={() => setDebug((d) => !d)}>
               {debug ? "show designed" : "show debug view"}
             </button>
+            {USE_MOCK && !debug && (
+              <>
+                {" · "}
+                <button className="dev-link" onClick={trayClick}>
+                  replay open
+                </button>
+              </>
+            )}
           </figcaption>
           <div className="dev-window" style={{ width: 340, height: 480 }}>
             {quit ? (
@@ -73,7 +94,18 @@ function Windows() {
             ) : debug ? (
               <PopoverDebug />
             ) : (
-              <Popover />
+              <>
+                <div style={{ visibility: hidden ? "hidden" : "visible" }}>
+                  <Popover />
+                </div>
+                {hidden && (
+                  <button className="dev-tray" onClick={trayClick}>
+                    Popover hidden (Esc).
+                    <br />
+                    Click to simulate the tray icon.
+                  </button>
+                )}
+              </>
             )}
           </div>
         </figure>
