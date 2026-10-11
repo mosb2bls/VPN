@@ -38,6 +38,7 @@ export function validateNodeForm(form: NodeForm, mode: "add" | "update"): FieldE
   if (!form.name.trim()) out.push(fieldError("name", "FIELD_REQUIRED"));
   else if (form.name.length > 64) out.push(fieldError("name", "FIELD_TOO_LONG"));
   if (!form.server.trim()) out.push(fieldError("server", "FIELD_REQUIRED"));
+  else if (form.server.includes(":")) out.push(fieldError("server", "FIELD_INVALID_HOST")); // IPv6 rejected
   else if (!validHost(form.server.trim())) out.push(fieldError("server", "FIELD_INVALID_HOST"));
   if (!Number.isInteger(form.port) || form.port < 1 || form.port > 65535) out.push(fieldError("port", "FIELD_INVALID_PORT"));
 
@@ -54,8 +55,8 @@ export function validateNodeForm(form: NodeForm, mode: "add" | "update"): FieldE
     secret(out, "password", form.password, mode, true);
     secret(out, "obfsPassword", form.obfsPassword, mode, false);
     if (form.sni && !validHost(form.sni)) out.push(fieldError("sni", "FIELD_INVALID_SNI"));
-    if (form.pinSha256 && !/^([0-9a-f]{2}:?){32}$/i.test(form.pinSha256.replace(/:$/, "")))
-      out.push(fieldError("pinSha256", "FIELD_INVALID_PIN"));
+    // SPEC §2.1.1: pinning not supported yet — must be null.
+    if (form.pinSha256 !== null) out.push(fieldError("pinSha256", "FIELD_INVALID"));
     for (const f of ["upMbps", "downMbps"] as const) {
       const v = form[f];
       if (v !== null && (!Number.isFinite(v) || v < 1 || v > 100_000)) out.push(fieldError(f, "FIELD_INVALID_BANDWIDTH"));

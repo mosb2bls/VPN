@@ -1,5 +1,6 @@
-// Tray popover, 340 × 480 (SPEC §2.8). Laid out on the 24 px grid: the frame
-// is 12 × 17 modules and every block below spans whole rows (UI.md D10).
+// Tray popover, 340 × 480 (SPEC §2.8). Laid out on a 24 px rhythm: the frame
+// is 12 × 17 modules and every block spans whole rows (UI.md D10). The grid
+// itself is not drawn (owner: cleaner, D15).
 //
 //   rows 1–2   status instrument (dot on the HY2 / REALITY tick)
 //   rows 3–5   state word + one-line consequence / progress
@@ -7,8 +8,8 @@
 //   rows 8–9   primary action
 //   row  10    routing mode
 //   row  11    capture mode
-//   rows 12–13 coverage note
-//   rows 14–15 live speeds + latency
+//   rows 12–13 coverage note       ┐ replaced by the state's notice
+//   rows 14–15 live speeds + latency ┘ when there is one (blocked, error…)
 //   row  16    last event
 //   row  17    footer: settings · restore networking · quit
 import { useEffect, useState, type ReactNode } from "react";
@@ -19,7 +20,7 @@ import { selectLastEvent, useApp } from "../state/store";
 import { Frame, MetaLabel } from "../ui/Frame";
 import { Segmented } from "../ui/Segmented";
 import { StatusInstrument } from "./StatusInstrument";
-import { derivePopoverView, type PopoverView } from "./view";
+import { derivePopoverView, type LinkAction, type Notice, type PopoverView } from "./view";
 
 const ROUTING = [
   { value: "rule", label: "Rule" },
@@ -77,6 +78,11 @@ export function Popover() {
     else if (a === "restore") void commands.restoreNetworking();
     else if (a === "open_helper") void commands.openSettings("helper");
   };
+  const link = (a: LinkAction) => {
+    if (a === "restore") void commands.restoreNetworking();
+    else if (a === "open_logs") void commands.openSettings("logs");
+    else void commands.openSettings("helper");
+  };
 
   return (
     <Frame
@@ -85,6 +91,7 @@ export function Popover() {
       module={24}
       cols={12}
       rows={17}
+      grid={false}
       tl="EdgeClient"
       tr="01 / Status"
       bl={shown ? `${protocolBadge(shown.protocol)} · ${transport(shown.protocol)} ${shown.port}` : "No node"}
@@ -104,17 +111,19 @@ export function Popover() {
           {/* rows 3–5 · state */}
           <div className="row-span-3 flex flex-col justify-center gap-1.5">
             <h1 className={`state-word ${WORD_COLOR[view.tone]}`}>{view.word}</h1>
-            <p className={`truncate ${view.tone === "ring" ? "label text-ink" : "text-secondary text-ink-muted"}`}>{view.sub}</p>
+            <p className={`truncate ${view.subMono ? "label text-ink" : "text-secondary text-ink-muted"}`} title={view.sub}>
+              {view.sub}
+            </p>
           </div>
 
           {/* rows 6–7 · node */}
           <button
             type="button"
-            className="group row-span-2 flex flex-col justify-center border-t border-line text-left focus-visible:outline-2 focus-visible:outline-cobalt"
-            aria-label="Choose node"
-            disabled={nodes.length === 0}
+            className="group row-span-2 flex flex-col justify-center text-left focus-visible:outline-2 focus-visible:outline-cobalt"
+            aria-label={nodes.length ? "Choose node" : "Add a node in Settings"}
+            onClick={() => nodes.length === 0 && void commands.openSettings("nodes")}
           >
-            <MetaLabel muted>Node</MetaLabel>
+            <MetaLabel muted>{view.onFallback ? "Node · on fallback" : "Node"}</MetaLabel>
             <span className="mt-1 flex items-center gap-2">
               <span className="min-w-0 flex-1 truncate text-body font-medium">{shown ? shown.name : "No nodes — add one in Settings"}</span>
               {shown?.lastTest?.ok && <span className="label tabular text-ink-muted">{shown.lastTest.latencyMs} ms</span>}
@@ -129,7 +138,11 @@ export function Popover() {
               type="button"
               onClick={primary}
               disabled={view.primary.disabled}
-              className="h-10 w-full bg-ink font-display text-[13px] font-[750] tracking-[0.12em] text-paper uppercase transition-transform duration-fast active:translate-y-px disabled:bg-ink/30 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cobalt"
+              className={`h-10 w-full border border-ink font-display text-[13px] font-[750] tracking-[0.12em] uppercase transition-[transform,background-color,color] duration-fast active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cobalt ${
+                view.primary.variant === "solid"
+                  ? "bg-ink text-paper disabled:border-ink/30 disabled:bg-ink/30"
+                  : "bg-transparent text-ink hover:bg-ink/5 disabled:border-ink/30 disabled:text-ink-muted"
+              }`}
             >
               {view.primary.label}
             </button>
@@ -145,24 +158,31 @@ export function Popover() {
             <Segmented label="Capture mode" options={CAPTURE} value={status.captureMode} onChange={(m) => void commands.setCaptureMode(m)} />
           </Row>
 
-          {/* rows 12–13 · coverage note */}
-          <p className="row-span-2 flex items-center text-[11px] leading-[15px] text-ink-muted">
-            {status.captureMode === "system_proxy"
-              ? "Only apps that use the system proxy are covered. Use TUN for whole-device protection."
-              : "TUN covers the whole device. The kill switch blocks traffic if the proxy stops."}
-          </p>
+          {view.notice ? (
+            /* rows 12–15 · notice */
+            <NoticeBlock notice={view.notice} onLink={link} />
+          ) : (
+            <>
+              {/* rows 12–13 · coverage note */}
+              <p className="row-span-2 flex items-center text-[11px] leading-[15px] text-ink-muted">
+                {status.captureMode === "system_proxy"
+                  ? "Only apps that use the system proxy are covered. Use TUN for whole-device protection."
+                  : "TUN covers the whole device. The kill switch blocks traffic if the proxy stops."}
+              </p>
 
-          {/* rows 14–15 · speeds */}
-          <div className="row-span-2 grid grid-cols-3 border-t border-line pt-1.5">
-            <Stat label="Up" value={stats ? rate(stats.upBytesPerSec) : "—"} />
-            <Stat label="Down" value={stats ? rate(stats.downBytesPerSec) : "—"} />
-            <Stat label="Latency" value={stats?.latencyMs != null ? `${stats.latencyMs} ms` : "—"} />
-          </div>
+              {/* rows 14–15 · speeds */}
+              <div className="row-span-2 grid grid-cols-3 items-center">
+                <Stat label="Up" value={stats ? rate(stats.upBytesPerSec) : "—"} />
+                <Stat label="Down" value={stats ? rate(stats.downBytesPerSec) : "—"} />
+                <Stat label="Latency" value={stats?.latencyMs != null ? `${stats.latencyMs} ms` : "—"} />
+              </div>
+            </>
+          )}
 
           {/* row 16 · last event */}
           <button
             type="button"
-            className="flex items-center gap-2 border-t border-line text-left"
+            className="flex items-center gap-2 text-left"
             title={lastEvent?.text}
             aria-label="Last event"
           >
@@ -181,6 +201,37 @@ export function Popover() {
         </div>
       )}
     </Frame>
+  );
+}
+
+function NoticeBlock({ notice, onLink }: { notice: Notice; onLink: (a: LinkAction) => void }) {
+  const bar = notice.tone === "error" ? "bg-vermilion" : notice.tone === "warn" ? "bg-mustard" : "bg-ink";
+  return (
+    <div className="row-span-4 flex gap-2.5 overflow-hidden py-2" role={notice.tone === "error" ? "alert" : "status"}>
+      <span aria-hidden className={`w-[3px] shrink-0 ${bar}`} />
+      <div className="flex min-w-0 flex-col gap-1">
+        <p className="text-body font-medium">{notice.title}</p>
+        {notice.lines.map((l) => (
+          <p key={l} className="text-[11px] leading-[15px] text-ink">
+            {l}
+          </p>
+        ))}
+        {notice.links.length > 0 && (
+          <div className="mt-auto flex gap-4">
+            {notice.links.map((l) => (
+              <button
+                key={l.label}
+                type="button"
+                onClick={() => onLink(l.action)}
+                className="label text-ink underline underline-offset-4 hover:no-underline focus-visible:outline-2 focus-visible:outline-cobalt"
+              >
+                {l.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

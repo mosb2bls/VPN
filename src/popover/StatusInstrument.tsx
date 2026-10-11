@@ -6,7 +6,7 @@ import type { Tone } from "./view";
 
 const MODULE = 24;
 /** Tick columns inside the 12-column frame (x = col × 24). */
-export const TICK_X: Record<Protocol, number> = { hysteria2: 8 * MODULE, vless_reality: 11 * MODULE };
+export const TICK_X: Record<Protocol, number> = { hysteria2: 7 * MODULE, vless_reality: 10 * MODULE };
 const LABEL: Record<Protocol, string> = { hysteria2: "HY2", vless_reality: "REALITY" };
 const DROP = 30; // line length when dropped
 const R = 5; // dot radius

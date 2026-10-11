@@ -1,7 +1,7 @@
 # EdgeClient — UI notes
 
 Owner: UI agent. Approved design decisions, tokens and frontend structure.
-Built against **SPEC v1.0.0**.
+Built against **SPEC v1.0.1**.
 
 ## 1. Approved decisions (U0)
 
@@ -20,6 +20,12 @@ Built against **SPEC v1.0.0**.
 | D12 | DIRECT: the big word is **DIRECT**; directly under it a mono line `NOT PROXIED — NO PROTECTION`. Hollow ink ring dot (D3). |
 | D13 | Mustard dot always has a 1 px ink outline (mustard vs paper is 1.5:1) and is always paired with the state word. |
 | D14 | Red banners (BLOCKED, NOT RESTORED): vermilion border/bar with **ink text on paper**; never text on a vermilion fill. |
+| D15 | Popover: **no visible grid** and almost no divider rules (owner: grid looked heavy). The 24 px rhythm, thin frame, ticks, corner labels and dot remain. One hairline above the footer. |
+| D16 | Instrument band stays empty apart from the HY2 / REALITY ticks (columns 7 and 10) and the dot. |
+| D17 | Restore networking is always in the popover footer (small, muted). |
+| D18 | Primary button: solid ink to start or fix (CONNECT, TRY AGAIN, SET UP TUN, RESTORE NETWORKING); outline while active or busy (CANCEL, DISCONNECT, TURN OFF, DISCONNECTING…, RECOVERING…). BLOCKED uses solid DISCONNECT. |
+| D19 | Notice block (rows 12–15, replaces coverage note + stats): 3 px bar — vermilion = error, mustard = warning, ink = info — with ink text on paper. Used for BLOCKED, NOT RESTORED, ERROR, HELPER MISSING, RECOVERING, and DEGRADED / RECONNECTING in system-proxy mode ("Apps may connect directly — no kill switch"). |
+| D20 | Kill switch engaged **and** restore incomplete → word BLOCKED, sub "Restore incomplete — kill switch still on", failed items listed, primary RESTORE NETWORKING. |
 | D8 | **NOT RESTORED** (partial restore, SPEC §2.7): shown whenever `lastRestore.fullyRestored` is false and the app is not proxying; never looks like OFF. Lists each failed/skipped item, offers Retry (Restore networking) and explains `--restore-networking`. Only an engaged kill switch (BLOCKED) ranks above it. |
 
 ## 2. Frontend structure
@@ -138,7 +144,7 @@ geometry: frame 288 × 408 px, module 24 (12 × 17), 26 px side margins (D10).
 | stagger | 35 ms per item, max 6 |
 | spring | bounce 0 only |
 
-### Popover layout (U2.1 — proposed)
+### Popover layout (approved U2.1, cleaned per D15)
 
 340 × 480 window; frame 288 × 408 = 12 × 17 rows of 24 px; content inset 12 px.
 Corner labels: `EDGECLIENT` · `01 / STATUS` · `<HY2|REALITY> · <UDP|TCP> <port>` · session
@@ -146,19 +152,37 @@ time (muted `00:00:00` when not connected).
 
 | Rows | Block |
 |---|---|
-| 1–2 | Status instrument: `HY2` tick at column 8, `REALITY` tick at column 11; dot hangs from the active/selected node's tick |
+| 1–2 | Status instrument: `HY2` tick at column 7, `REALITY` tick at column 10; dot hangs from the active/selected node's tick |
 | 3–5 | State word (30 px, 850, 82 %) + one line: progress text / consequence |
 | 6–7 | Node: name, last latency, protocol badge, chevron (opens switcher, U2.3) |
 | 8–9 | Primary action, 40 px ink button |
 | 10 | Routing: RULE / GLOBAL / DIRECT |
 | 11 | Capture: SYSTEM PROXY / TUN |
-| 12–13 | Coverage note (system proxy: required copy; TUN: whole device + kill switch) |
+| 12–13 | Coverage note (system proxy: required copy; TUN: whole device + kill switch) — or notice (rows 12–15, D19) |
 | 14–15 | Up / Down / Latency (18 px tabular; `—` when idle) |
 | 16 | Last event (failover reason or error; click for details) |
 | 17 | Footer: SETTINGS · RESTORE NETWORKING · QUIT |
 
 State → view mapping lives in `src/popover/view.ts` (priority BLOCKED > NOT RESTORED >
 state; HELPER MISSING replaces OFF in TUN without helper).
+
+### Popover states (U2.2)
+
+| State | Word | Dot | Sub-line | Primary | Notice |
+|---|---|---|---|---|---|
+| OFF | OFF | ink, retracted | Not protected · traffic goes out normally | CONNECT (disabled without nodes) | — |
+| HELPER MISSING | HELPER MISSING | ink, retracted | TUN mode needs a one-time helper install | SET UP TUN → Settings › Helper | info |
+| CONNECTING | CONNECTING | mustard + ink outline, dropped | backend progress text | CANCEL (outline) | — |
+| CONNECTED | CONNECTED (cobalt) | cobalt, dropped | Health checks passing / On fallback · reason | DISCONNECT (outline) | — |
+| DEGRADED | DEGRADED | mustard, dropped | progress / failure count | DISCONNECT | warn in system proxy |
+| FAILING OVER | FAILING OVER | mustard, dropped | Switching to … | DISCONNECT | — |
+| RECONNECTING | RECONNECTING | mustard, dropped | attempt text | DISCONNECT | warn in system proxy |
+| DIRECT | DIRECT | hollow ring, retracted | mono `NOT PROXIED — NO PROTECTION` | TURN OFF | — |
+| DISCONNECTING | DISCONNECTING | ink, retracted | progress | DISCONNECTING… (disabled) | — |
+| RECOVERING | RECOVERING | mustard, dropped | progress | RECOVERING… (disabled) | info |
+| ERROR | ERROR | vermilion, retracted | reason | TRY AGAIN | error + Details |
+| BLOCKED | BLOCKED | vermilion, dropped | reason | DISCONNECT | error + Restore networking |
+| NOT RESTORED | NOT RESTORED | vermilion, retracted | Network settings are not back to normal | RESTORE NETWORKING | error: failed items + Details |
 
 ## 4. Dependencies
 

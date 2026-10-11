@@ -128,7 +128,7 @@ export function manyNodes(): NodeFixture[] {
   const extra: NodeFixture[] = [
     hy2(newId(), "Backup HY2 — secondary VPS with a deliberately very long display name", "backup.example.net", 24443, "mock-hy2-password-3"),
     vless(newId(), "Backup REALITY", "backup.example.net", 443, "00000000-aaaa-4bbb-8ccc-000000000002"),
-    hy2(newId(), "Office", "198.51.100.7", 8443, "mock-hy2-password-4", { pinSha256: "ab".repeat(32) }),
+    hy2(newId(), "Office", "198.51.100.7", 8443, "mock-hy2-password-4"),
     vless(newId(), "REALITY · alt fingerprint", "edge.example.net", 8443, "00000000-aaaa-4bbb-8ccc-000000000003", {
       fingerprint: "safari",
       spiderX: "/",
