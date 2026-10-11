@@ -20,7 +20,11 @@ Each agent edits only its own section.
 
 ## UI
 
-- **Phase/step:** not started
-- **SPEC version:** —
-- **Real / stubbed:** —
-- **Known issues:** —
+- **Phase/step:** U0 — Orientation (done, awaiting owner review)
+- **SPEC version:** 0.1.0
+- **Real / stubbed:** no frontend code yet beyond the B0 template (`src/App.tsx`).
+  Plan: `src/api/client.ts` wraps `bindings.ts`; `src/api/mock.ts` simulates the whole
+  SPEC; `VITE_USE_MOCK=1` (default for `npm run dev`).
+- **Open requests:** REQ-1 (popover + settings windows, tray, open-at-section),
+  REQ-2 (latency in `TrafficStats`), REQ-3 (clarifications).
+- **Known issues:** none.
