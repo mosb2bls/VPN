@@ -133,7 +133,7 @@ export function manyNodes(): NodeFixture[] {
     hy2(newId(), "Office", "198.51.100.7", 8443, "mock-hy2-password-4"),
     vless(newId(), "REALITY · alt fingerprint", "edge.example.net", 8443, "00000000-aaaa-4bbb-8ccc-000000000003", {
       fingerprint: "safari",
-      spiderX: "/",
+
     }),
     hy2(newId(), "Travel", "travel.example.com", 443, "mock-hy2-password-5"),
   ];

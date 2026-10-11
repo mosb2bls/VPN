@@ -40,12 +40,12 @@ export function DevPage() {
 function Windows() {
   const [quit, setQuit] = useState(false);
   const [debug, setDebug] = useState(false);
-  // Simulated tray: hidePopover hides it, the tray button shows it (popoverShown).
+  // Simulated tray: any backend hide (Esc, Settings…) sends popoverHidden; the tray button shows it again.
   const [hidden, setHidden] = useState(false);
   useEffect(
     () =>
       mockEngine.onAny((name) => {
-        if (name.includes("hidePopover")) setHidden(true);
+        if (name === "popoverHidden") setHidden(true);
       }),
     [],
   );
@@ -100,7 +100,7 @@ function Windows() {
                 </div>
                 {hidden && (
                   <button className="dev-tray" onClick={trayClick}>
-                    Popover hidden (Esc).
+                    Popover hidden.
                     <br />
                     Click to simulate the tray icon.
                   </button>

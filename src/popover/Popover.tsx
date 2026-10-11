@@ -63,25 +63,37 @@ export function Popover() {
 
   // Motion moment 1: every show from the tray replays the open sequence.
   const [openSeq, setOpenSeq] = useState(0);
-  /** "esc": fade out, then ask the backend to hide. "blur": the OS already hid us — park invisible. */
-  const [hiding, setHiding] = useState<null | "esc" | "blur">(null);
+  /** "esc": fade out, then ask the backend to hide. "parked": already hidden — invisible until shown. */
+  const [hiding, setHiding] = useState<null | "esc" | "parked">(null);
+  /** Skip the open animation when the page is not visible: animations pause there and the
+   *  popover must never come up invisible. */
+  const [instant, setInstant] = useState(false);
   useEffect(() => {
-    let off: (() => void) | undefined;
+    const offs: (() => void)[] = [];
     void on("popoverShown", () => {
       setSheet(false);
       setHiding(null);
+      setInstant(document.visibilityState === "hidden");
       setOpenSeq((n) => n + 1);
-    }).then((u) => (off = u));
-    return () => off?.();
+    }).then((u) => offs.push(u));
+    // Primary park signal (SPEC 1.2.0): sent after every backend hide, whatever the cause.
+    void on("popoverHidden", () => setHiding((h) => h ?? "parked")).then((u) => offs.push(u));
+    return () => offs.forEach((u) => u());
   }, []);
 
   // Esc hides the popover (SPEC §2.8). The sheet stops its own Esc first.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setHiding("esc");
+    // Hiding must never depend on an animation callback (those pause in hidden/throttled
+    // webviews): fade, and hide on a plain timer of the same length.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setHiding("esc");
+      window.setTimeout(() => void commands.hidePopover(), openTimeline.hide.duration * 1000);
+    };
     window.addEventListener("keydown", onKey);
     // Only the real popover window hides on blur; the dev page must not.
-    // Tray-toggle hides may not blur on macOS; visibilitychange covers those (backend note, SPEC 1.1.2).
-    const onBlur = () => windowLabel() === "popover" && setHiding((h) => h ?? "blur");
+    // Fallbacks to popoverHidden: blur and visibilitychange (real popover window only).
+    const onBlur = () => windowLabel() === "popover" && setHiding((h) => h ?? "parked");
     const onVis = () => document.visibilityState === "hidden" && onBlur();
     window.addEventListener("blur", onBlur);
     document.addEventListener("visibilitychange", onVis);
@@ -139,13 +151,12 @@ export function Popover() {
       key={openSeq}
       className="relative"
       style={{ width: 340, height: 480 }}
-      initial={{ opacity: 0 }}
+      initial={instant ? false : { opacity: 0 }}
       animate={{ opacity: hiding ? 0 : 1 }}
-      transition={hiding === "blur" ? { duration: 0 } : hiding ? openTimeline.hide : openTimeline.paper}
-      onAnimationComplete={() => hiding === "esc" && void commands.hidePopover()}
+      transition={hiding === "parked" ? { duration: 0 } : hiding ? openTimeline.hide : openTimeline.paper}
     >
       <Frame
-        animate
+        animate={!instant}
         width={340}
         height={480}
         module={24}

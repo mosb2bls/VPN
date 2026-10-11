@@ -1,7 +1,7 @@
 # EdgeClient — UI notes
 
 Owner: UI agent. Approved design decisions, tokens and frontend structure.
-Built against **SPEC v1.1.2**.
+Built against **SPEC v1.2.1**.
 
 ## 1. Approved decisions (U0)
 
@@ -208,9 +208,15 @@ Tokens: `openTimeline` in `src/design/motion.ts`. Plays on mount and on every
 | Content: opacity 0 → 1, y 6 → 0 px | 100 ms | 280 ms | enter |
 | Hide (Esc): opacity → 0, then `hidePopover()` | 0 | 120 ms | exit |
 
-On window blur or `visibilitychange → hidden` (the OS hides the popover; a tray-toggle hide
-may not blur on macOS) the content is parked at opacity 0 instantly, so the next show starts
-blank instead of flashing the previous frame.
+Parking: on `popoverHidden` (SPEC 1.2.0, sent after every backend hide) — with `blur` and
+`visibilitychange → hidden` as fallbacks — the content is set to opacity 0 instantly, so the
+next show starts blank instead of flashing the previous frame.
+
+Robustness rules (found while testing in a background tab, where animation callbacks pause):
+- Esc fades for 120 ms and calls `hidePopover()` on a **plain timer** of the same length —
+  never on an animation-complete callback.
+- If the page reports `visibilityState = hidden` when `popoverShown` arrives, the popover is
+  shown **instantly** (no open animation), so it can never come up invisible.
 
 Frame draw direction: one stroke, clockwise from the top-left (approved).
 

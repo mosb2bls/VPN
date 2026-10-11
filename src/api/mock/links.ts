@@ -54,6 +54,8 @@ export function parseLink(line: string): ParsedLink {
   if (scheme === "vless") {
     for (const k of keys) if (!VLESS_PARAMS.has(k)) return fail(scheme, "LINK_UNSUPPORTED_PARAM", param(k));
     if (q.get("pqv")) return fail(scheme, "LINK_UNSUPPORTED_PARAM", param("pqv"));
+    // SPEC 1.2.1: sing-box 1.14 has no spiderX option — reject rather than ignore.
+    if (q.get("spx")) return fail(scheme, "LINK_UNSUPPORTED_PARAM", param("spx"));
     if (q.get("security") !== "reality") return fail(scheme, q.has("security") ? "LINK_UNSUPPORTED_PARAM" : "LINK_MISSING_PARAM", param("security"));
     if (!["tcp", "raw"].includes(q.get("type") ?? "tcp")) return fail(scheme, "LINK_UNSUPPORTED_PARAM", param("type"));
     if ((q.get("headerType") ?? "none") !== "none") return fail(scheme, "LINK_UNSUPPORTED_PARAM", param("headerType"));
@@ -84,7 +86,7 @@ export function parseLink(line: string): ParsedLink {
           fingerprint: fp,
           publicKeyMasked: mask(q.get("pbk")!),
           shortIdMasked: q.get("sid") ? "••••" : "",
-          spiderX: q.get("spx"),
+          spiderX: null,
         },
         lastTest: null,
         secretMissing: false,

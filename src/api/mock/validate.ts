@@ -72,7 +72,8 @@ export function validateNodeForm(form: NodeForm, mode: "add" | "update"): FieldE
     if (!form.sni.trim()) out.push(fieldError("sni", "FIELD_REQUIRED"));
     else if (!validHost(form.sni.trim())) out.push(fieldError("sni", "FIELD_INVALID_SNI"));
     if (!FINGERPRINTS.includes(form.fingerprint)) out.push(fieldError("fingerprint", "FIELD_INVALID_FINGERPRINT"));
-    if (form.spiderX && !form.spiderX.startsWith("/")) out.push(fieldError("spiderX", "FIELD_INVALID"));
+    // SPEC 1.2.1: spiderX not supported — must be null.
+    if (form.spiderX !== null) out.push(fieldError("spiderX", "FIELD_INVALID"));
   }
   return out;
 }

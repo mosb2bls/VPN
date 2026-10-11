@@ -782,7 +782,7 @@ export class MockEngine {
           fingerprint: form.fingerprint,
           publicKeyMasked: keepOr(form.publicKey, pd?.publicKeyMasked) ?? "••••",
           shortIdMasked: form.shortId.kind === "set" ? (form.shortId.value ? "••••" : "") : (pd?.shortIdMasked ?? "••••"),
-          spiderX: form.spiderX,
+          spiderX: null,
         },
       },
     };
@@ -1146,11 +1146,13 @@ export class MockEngine {
     hidePopover: () =>
       this.call("hidePopover", () => {
         this.anyListeners.forEach((h) => h("· hidePopover (command)", null));
+        this.hidePopoverWindow();
         return ok(null);
       }),
     openSettings: (section) =>
       this.call("openSettings", () => {
         this.anyListeners.forEach((h) => h("· openSettings (command)", { section }));
+        this.hidePopoverWindow(); // SPEC §2.8: open_settings hides the popover
         if (section) this.emit("settingsSectionRequested", { section });
         return ok(null);
       }),
@@ -1494,9 +1496,20 @@ export class MockEngine {
     this.emit("helperStatusChanged", { status: this.helper });
   }
 
+  /** Simulated popover window visibility (SPEC §2.8). */
+  popoverVisible = true;
+
   /** The tray click that shows the popover (SPEC §2.8). */
   emitPopoverShown() {
+    this.popoverVisible = true;
     this.emit("popoverShown", null);
+  }
+
+  /** Every backend hide emits popoverHidden — but not if already hidden (SPEC 1.2.0). */
+  hidePopoverWindow() {
+    if (!this.popoverVisible) return;
+    this.popoverVisible = false;
+    this.emit("popoverHidden", null);
   }
 
   asBackend(): Backend {

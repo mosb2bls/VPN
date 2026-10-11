@@ -29,10 +29,10 @@ Each agent edits only its own section.
 ## UI
 
 - **Phase/step:** U2.4.2 — motion moment 2: connect / disconnect (awaiting owner review)
-- **SPEC version:** 1.1.2
+- **SPEC version:** 1.2.1 (`popoverHidden` used; spiderX hidden/rejected like pinSha256)
 - **Real / stubbed:** `src/api/client.ts` wraps `bindings.ts` (real inside Tauri, mock in a
   browser; `VITE_USE_MOCK` overrides). Mock simulates every SPEC command, event and error
   code. The `popover` window renders the designed popover (`src/popover/`: all states,
   node sheet, open/hide motion); `settings` still renders the U1.1 debug view until U3.
 - **Open requests:** none.
-- **Known issues:** popover hide → parked content relies on `blur` / `visibilitychange` until a `popoverHidden` event exists (untested on Windows).
+- **Known issues:** none known; popover show/hide behaviour in the real windows is untested on Windows.
