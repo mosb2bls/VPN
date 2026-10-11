@@ -4,15 +4,17 @@ Each agent edits only its own section.
 
 ## Backend
 
-- **Phase/step:** B1.3 — REQ-1 windows + tray, and removal of deprecated restore
-  `actions` (done, awaiting owner review). Next: **Phase B2** (core, system proxy mode).
-- **SPEC version:** 1.0.0 (`docs/SPEC.md`, `src/api/bindings.ts`)
+- **Phase/step:** B2.1 — share-link parsing + validation in `edge-core` (done, awaiting
+  owner review). Next: B2.2 node store (keychain + settings JSON) and wiring
+  `import_links` / `add_node_manual` / `update_node` / `list_nodes` to real data.
+- **SPEC version:** 1.0.1 (`docs/SPEC.md`, `src/api/bindings.ts`)
 - **Real:** `get_app_info`; input validation in `set_failover_settings` and `set_settings`;
   in-memory `delete_node` / `reorder_nodes` / `select_node` and mode setters (emit
   `nodesChanged` / `statusChanged`); `quit_app` (exits — no OS state exists yet);
   windows `popover` / `settings` + tray icon and menu (REQ-1; `hide_popover`,
   `open_settings`, `reveal_diagnostics`, `settingsSectionRequested`, `popoverShown`) —
   launches cleanly; hand-testing pending (TESTING.md M-SHELL);
+  link parsing / validation / masking in `edge-core` (not yet wired to commands);
   restore orchestration logic in `edge-core` (`restore.rs`, unit-tested with a fake
   restorer — no real OS restore steps yet).
 - **Placeholder data:** `list_nodes` (two `[placeholder] …` nodes, fake values), `get_status`

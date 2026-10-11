@@ -13,7 +13,10 @@ pub const APP_NAME: &str = "EdgeClient";
 pub const APP_SLUG: &str = "edgeclient";
 
 pub mod error_code;
+pub mod link;
 pub mod restore;
+pub mod secret;
+pub mod validate;
 
 pub use error_code::ErrorCode;
 

@@ -1,6 +1,6 @@
 # EdgeClient — Backend ↔ UI Interface Specification
 
-**Spec version:** 1.0.0
+**Spec version:** 1.0.1
 **Status:** approved; includes REQ-1 to REQ-4 (Phase B1). "1.0.0" marks a breaking change, not feature completeness — most commands are still stubs.
 **Generated bindings:** `src/api/bindings.ts` (from `src-tauri/src/api/*`, via tauri-specta `=2.0.0-rc.25`)
 
@@ -12,6 +12,7 @@ the disagreement is a backend bug — file a REQ.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.0.1 | 2026-10-11 | **Clarification:** exact import rules for share links (§2.1.1): accepted parameters per scheme, rejected ones (incl. HY2 `pinSHA256` and `ech`, VLESS `pqv`, non-raw transports), IPv6 server literals rejected (IPv4-only), `type=raw` = `tcp`, `mport` / `upmbps` / `downmbps` accepted; `pinSha256` in forms must be null for now. No type changes. |
 | 1.0.0 | 2026-10-11 | **Breaking (owner-approved):** removed deprecated `RestoreReport.actions`, `RecoveryReport.actions` and type `RestoreAction` — use `items` / `restore`. **Additive (REQ-1):** windows `popover` + `settings` and tray (§2.8); commands `hide_popover`, `open_settings(section)`, `reveal_diagnostics`; type `SettingsSection`; events `settingsSectionRequested`, `popoverShown`; codes `DIAGNOSTICS_NOT_FOUND`, `WINDOW_UNAVAILABLE`. |
 | 0.3.0 | 2026-10-11 | **Additive (REQ-4, owner decision):** per-item restore reporting (§2.7). New: `RestoreItem`, `RestoreItemKind`, `RestoreResult`, `RestoreTrigger`; `RestoreReport.{at, trigger, items}`; `RecoveryReport.restore`; `AppError.restoreReport`; `Status.{tunActive, lastRestore}`; event `restoreReportChanged`; codes `TUN_STOP_FAILED`, `ROUTE_RESTORE_FAILED`, `DNS_RESTORE_FAILED`, `IPV6_RESTORE_FAILED`. **Clarified:** partial restore failure is always the error `RESTORE_INCOMPLETE` (never `ok`), for `disconnect` and `restore_networking` alike. **Deprecated:** `RestoreReport.actions`, `RecoveryReport.actions`, type `RestoreAction` (mirrors; removed in the next major). |
 | 0.2.0 | 2026-10-11 | **Additive (REQ-2):** `TrafficStats.latencyMs`. **Clarifications (REQ-3):** concurrent `test_node` (§2.1), `nodesChanged` after a test (§2.1), connect preconditions leave state unchanged (§2.2), progress text in `statusChanged.reason` (§2.2), `get_logs` polling (§2.6). |
@@ -90,6 +91,52 @@ clarification/wording. Each interface change updates this file, the changelog, a
 - **After a test** (REQ-3): the backend stores the result as that node's `lastTest` and
   emits `nodesChanged` with the updated list. The returned `NodeTestResult` is the same
   data; the UI may patch locally or wait for the event.
+
+#### 2.1.1 Share-link import rules
+
+Implemented in `crates/core/src/link.rs`; sources: Hysteria 2 URI scheme
+(v2.hysteria.network/docs/developers/URI-Scheme), VLESS share-link proposal
+(XTLS/Xray-core discussion #716), sing-box TLS docs. Error `param` names are shown in
+`error.detail`, never values.
+
+General: scheme is case-insensitive; one link per line; values are percent-decoded
+(invalid `%` escapes → `LINK_MALFORMED`); a parameter given twice → `LINK_MALFORMED`;
+any parameter not listed below → `LINK_UNSUPPORTED_PARAM`. The `#fragment` is the node
+name (decoded, whitespace collapsed, max 64 chars; default `HY2 <host>` /
+`REALITY <host>`). Server must be a domain (ASCII / `xn--`) or IPv4 literal;
+**IPv6 literals are parsed but rejected** (`LINK_INVALID_VALUE`, IPv4-only service).
+
+| `hy2://` / `hysteria2://` | Rule |
+|---|---|
+| auth (userinfo) | required; whole decoded value is the password (`user:pass` form kept as-is) |
+| port | optional, default 443; multi-port `443,20000-30000` = port hopping |
+| `sni` | optional domain |
+| `insecure` | `1`/`0`/`true`/`false`; default `0` |
+| `obfs` + `obfs-password` | `salamander` only, both required together; other types → unsupported |
+| `mport` | extra hopping ports/ranges (v2rayN style) |
+| `upmbps`, `downmbps` | optional bandwidth hints, 1–100000 |
+| `pinSHA256` | **rejected** (`LINK_UNSUPPORTED_PARAM`): full-certificate pinning needs sing-box 1.15 (`certificate_sha256`); the pinned core (1.14.x) cannot honour it |
+| `ech` | rejected if non-empty |
+
+| `vless://` | Rule |
+|---|---|
+| uuid (userinfo) | required, RFC 4122 UUID |
+| port | required |
+| `type` | `tcp` or `raw` (same thing); default `tcp`; others rejected |
+| `headerType` | absent / `none` only |
+| `encryption` | absent / `none` only |
+| `security` | `reality` required |
+| `flow` | `xtls-rprx-vision` required |
+| `sni` | domain; if absent, the host is used when it is a domain, else `LINK_MISSING_PARAM` |
+| `fp` | one of `chrome firefox edge safari 360 qq ios android random randomized`; default `chrome` |
+| `pbk` | required, base64url of 32 bytes |
+| `sid` | 0–16 hex chars, even length; may be empty |
+| `spx` | optional (decoded) |
+| `alpn` | optional comma list |
+| `pqv` | rejected if non-empty (post-quantum REALITY not supported) |
+
+Manual form: the same field rules apply. `Hy2Form.pinSha256` must be `null` in this
+version (non-null → `VALIDATION_FAILED`, field `pinSha256`, code `FIELD_INVALID`).
 
 ### 2.2 Connection
 
@@ -514,10 +561,12 @@ Things the UI must explain to the user (wording is the UI's choice; substance is
     `RESTORE_INCOMPLETE`), show **which items** failed or were skipped (from
     `items`), make clear networking is **not** back to normal, and offer Restore
     networking again. A partial failure must never look like success.
-11. **Clipboard:** import from clipboard only on explicit user action; the backend never
+11. **Certificate pin:** HY2 certificate pinning is not supported yet (see §2.1.1); hide or
+    disable the pin field in the HY2 form.
+12. **Clipboard:** import from clipboard only on explicit user action; the backend never
     reads the clipboard on its own.
-12. **Secrets** are shown masked only; there is no "reveal" command. To change a secret,
+13. **Secrets** are shown masked only; there is no "reveal" command. To change a secret,
     the user re-enters it.
-13. **Placeholder data (B1):** two nodes named `[placeholder] …` and fixed statuses are
+14. **Placeholder data (B1):** two nodes named `[placeholder] …` and fixed statuses are
     returned until Phase B2. Most actions return `NOT_IMPLEMENTED`; render that error
     gracefully.
