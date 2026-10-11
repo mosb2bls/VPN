@@ -21,11 +21,14 @@ Each agent edits only its own section.
 
 ## UI
 
-- **Phase/step:** U0 — Orientation (done, awaiting owner review)
-- **SPEC version:** 0.1.0
-- **Real / stubbed:** no frontend code yet beyond the B0 template (`src/App.tsx`).
-  Plan: `src/api/client.ts` wraps `bindings.ts`; `src/api/mock.ts` simulates the whole
-  SPEC; `VITE_USE_MOCK=1` (default for `npm run dev`).
-- **Open requests:** REQ-1 (popover + settings windows, tray, open-at-section),
-  REQ-2 (latency in `TrafficStats`), REQ-3 (clarifications).
+- **Phase/step:** U1.1 — API client + full mock + dev state switcher (awaiting owner review)
+- **SPEC version:** 0.2.0
+- **Real / stubbed:** `src/api/client.ts` wraps `bindings.ts` (real inside Tauri, mock in a
+  browser; `VITE_USE_MOCK` overrides). `src/api/mock.ts` simulates every SPEC command,
+  event and error code. Screens are temporary debug views (`src/dev/`); the designed
+  popover/settings come in U2/U3. Inside Tauri the current `main` window shows the dev
+  page without the mock panel until REQ-1 adds `popover` / `settings`.
+- **Pending flags:** `// PENDING REQ-1` (window commands/events) — mock-only; real build
+  returns `NOT_IMPLEMENTED`.
+- **Open requests:** REQ-1 (accepted, backend B1.2), REQ-4 (restore-report clarification).
 - **Known issues:** none.

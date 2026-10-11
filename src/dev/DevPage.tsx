@@ -1,0 +1,55 @@
+// Dev page: popover and settings window side by side at their real sizes,
+// plus the mock state switcher. `npm run dev` → http://localhost:1420
+import { useEffect, useState } from "react";
+import { SPEC_VERSION } from "../api/bindings";
+import { USE_MOCK } from "../api/client";
+import { mockEngine } from "../api/mock";
+import { useApp } from "../state/store";
+import { DevPanel } from "./DevPanel";
+import { PopoverDebug } from "./PopoverDebug";
+import { SettingsDebug } from "./SettingsDebug";
+import "./dev.css";
+
+export function DevPage() {
+  const [quit, setQuit] = useState(false);
+  const bootError = useApp((s) => s.bootError);
+  useEffect(() => {
+    mockEngine.onQuit = () => setQuit(true);
+  }, []);
+
+  return (
+    <div className="dev-page">
+      <header className="dev-header">
+        <span>EDGECLIENT · DEV</span>
+        <span>SPEC {SPEC_VERSION}</span>
+        <span className={USE_MOCK ? "dev-mock" : "dev-real"}>{USE_MOCK ? "MOCK BACKEND" : "REAL BACKEND"}</span>
+        {bootError && (
+          <span className="dev-real">
+            startup error: {bootError.code} — {bootError.message}
+          </span>
+        )}
+      </header>
+      <div className="dev-windows">
+        <figure>
+          <figcaption>POPOVER · 340 × 480</figcaption>
+          <div className="dev-window" style={{ width: 340, height: 480 }}>
+            {quit ? (
+              <div className="dbg-pad">
+                App quit (mock). <button onClick={() => location.reload()}>Relaunch</button>
+              </div>
+            ) : (
+              <PopoverDebug />
+            )}
+          </div>
+        </figure>
+        <figure>
+          <figcaption>SETTINGS · 760 × 560</figcaption>
+          <div className="dev-window" style={{ width: 760, height: 560 }}>
+            <SettingsDebug />
+          </div>
+        </figure>
+      </div>
+      {USE_MOCK && <DevPanel />}
+    </div>
+  );
+}

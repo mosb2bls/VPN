@@ -127,3 +127,23 @@ Template:
      `BUSY`, `HELPER_VERSION_MISMATCH`, `HELPER_UNREACHABLE`. Only failures after
      `connecting` starts go to `error`. So the popover can show "helper missing" before a
      connect attempt. (§2.2)
+
+## REQ-4: Clarify how an incomplete restore is reported
+- From: ui
+- Date: 2026-10-11
+- Status: open
+- Need: (patch-level answer is enough) The UI must show *which* items could not be
+  restored (SPEC §9.10, priority 3). Two cases are ambiguous:
+  1. `restore_networking` lists `RESTORE_INCOMPLETE` as an error **and** returns
+     `RestoreReport.fullyRestored`. When some items fail, does it return
+     `ok({ fullyRestored: false, actions })` or `error(RESTORE_INCOMPLETE)`? If it is the
+     error, where does the UI get the per-item `actions`?
+  2. `disconnect` → `RESTORE_INCOMPLETE`: is the per-item report put in
+     `Status.lastRecovery`, in `error.detail`, or nowhere?
+  3. After an incomplete restore, what are `state`, `killSwitchActive` and
+     `systemProxySet`?
+- Proposed shape: the mock currently does (1) `ok` with `fullyRestored: false` plus state
+  `error` / `lastError = RESTORE_INCOMPLETE`; (2) error only, no item list. Preferred:
+  always deliver the item list, e.g. (2) also fills `Status.lastRecovery` (or a new
+  `Status.lastRestore: RestoreReport | null`, additive).
+- Response:
