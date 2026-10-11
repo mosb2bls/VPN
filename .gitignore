@@ -1,0 +1,68 @@
+# ---------------------------------------------------------------------------
+# Secrets and credentials — never commit
+# ---------------------------------------------------------------------------
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.links
+*links*.txt
+*-hy2.txt
+*-reality.txt
+*.secret
+secrets/
+# Pre-existing server deployment material kept in this folder by the owner.
+# May contain server addresses, tokens or keys. Never commit, never read.
+/add_reality.py
+/check_b_layer.py
+/configure_hy2.py
+/deployment-notes.md
+/save_cloudflare_token.py
+/xray-install-result.log
+/xray-install-reviewed.sh
+
+# Generated runtime configs / journals / diagnostics (may contain secrets)
+*.singbox.json
+/run/
+journal*.json
+diagnostics*/
+*.diag.zip
+tests/integration/out/
+
+# ---------------------------------------------------------------------------
+# Downloaded binaries — fetched + SHA-256 verified at build time
+# ---------------------------------------------------------------------------
+/resources/bin/
+/src-tauri/binaries/
+/.cache/
+
+# ---------------------------------------------------------------------------
+# Build output
+# ---------------------------------------------------------------------------
+/target/
+node_modules/
+dist/
+dist-ssr/
+/src-tauri/gen/schemas
+
+# ---------------------------------------------------------------------------
+# Logs
+# ---------------------------------------------------------------------------
+logs/
+*.log
+npm-debug.log*
+
+# ---------------------------------------------------------------------------
+# Editor / OS
+# ---------------------------------------------------------------------------
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.sw?
+*.local
+
+# Claude Code: shared settings.json is committed, personal overrides are not
+.claude/settings.local.json

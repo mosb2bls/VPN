@@ -1,0 +1,10 @@
+[package]
+name = "edge-helper"
+description = "Privileged helper (macOS launchd daemon / Windows service) for TUN mode"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+edge-core.workspace = true

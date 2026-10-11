@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Read(//Users/rw/.config/personal-edge-proxy)",
+      "Read(//Users/rw/.config/personal-edge-proxy/**)",
+      "Read(~/.config/personal-edge-proxy/**)",
+      "Edit(//Users/rw/.config/personal-edge-proxy/**)",
+      "Bash(*personal-edge-proxy*)",
+      "Bash(*EDGE_TEST_LINKS*)",
+      "Bash(*iphone-hy2*)",
+      "Bash(*iphone-reality*)",
+
+      "Read(/add_reality.py)",
+      "Read(/check_b_layer.py)",
+      "Read(/configure_hy2.py)",
+      "Read(/deployment-notes.md)",
+      "Read(/save_cloudflare_token.py)",
+      "Read(/xray-install-result.log)",
+      "Read(/xray-install-reviewed.sh)",
+      "Edit(/add_reality.py)",
+      "Edit(/check_b_layer.py)",
+      "Edit(/configure_hy2.py)",
+      "Edit(/deployment-notes.md)",
+      "Edit(/save_cloudflare_token.py)",
+      "Edit(/xray-install-result.log)",
+      "Edit(/xray-install-reviewed.sh)",
+      "Bash(*add_reality.py*)",
+      "Bash(*check_b_layer.py*)",
+      "Bash(*configure_hy2.py*)",
+      "Bash(*deployment-notes.md*)",
+      "Bash(*save_cloudflare_token.py*)",
+      "Bash(*xray-install-result.log*)",
+      "Bash(*xray-install-reviewed.sh*)"
+    ],
+    "ask": [
+      "Bash(sudo *)",
+      "Bash(gh repo create *)",
+      "Bash(git push)",
+      "Bash(git push *)",
+      "Bash(networksetup *)",
+      "Bash(pfctl *)",
+      "Bash(route *)",
+      "Bash(scutil *)",
+      "Bash(ifconfig *)",
+      "Bash(launchctl *)",
+      "Bash(dscacheutil *)",
+      "Bash(killall *)",
+      "Bash(sysctl -w *)"
+    ],
+    "allow": [
+      "Bash(npm *)",
+      "Bash(cargo *)",
+      "Bash(git *)"
+    ]
+  }
+}
