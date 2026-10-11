@@ -4,11 +4,10 @@
 
 /* Archivo: weight 100–900 + width 62–125 % axes (OFL). */
 @import "@fontsource-variable/archivo/wdth.css";
-/* Mono candidates — one is dropped after the owner picks (U1.2 decision). */
+/* IBM Plex Mono (OFL) — metadata, badges, technical values, logs. */
 @import "@fontsource/ibm-plex-mono/latin-400.css";
 @import "@fontsource/ibm-plex-mono/latin-500.css";
 @import "@fontsource/ibm-plex-mono/latin-600.css";
-@import "@fontsource-variable/jetbrains-mono";
 
 @theme {
   /* Colour — ink on paper; accents carry state only. */
@@ -21,13 +20,12 @@
   --color-cobalt: #2439bc; /* connected, selection, focus */
   --color-vermilion: #d34f2e; /* error / blocked — dot, fill, border only */
   --color-vermilion-text: #b8401f; /* red text when unavoidable, 4.8:1 */
-  --color-mustard: #e7c24e; /* connecting / degraded — fill only, ink text */
+  --color-mustard: #e7c24e; /* connecting / degraded — fill only, ink text; dot gets an ink outline */
 
   /* Type */
   --font-sans: "Archivo Variable", system-ui, sans-serif;
   --font-display: "Archivo Variable", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
-  --font-mono-alt: "JetBrains Mono Variable", ui-monospace, Menlo, Consolas, monospace;
 
   --text-label: 10px; /* mono metadata */
   --text-label--line-height: 12px;

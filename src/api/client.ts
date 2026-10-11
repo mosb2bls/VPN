@@ -44,18 +44,6 @@ const wrappedTauriCommands = Object.fromEntries(
   ]),
 ) as unknown as Commands;
 
-const pendingNotImplemented = async (): Promise<Result<null>> => ({
-  status: "error",
-  error: {
-    code: "NOT_IMPLEMENTED",
-    message: "This feature is not implemented yet.",
-    recoverable: true,
-    fields: [],
-    detail: "PENDING REQ-1: window commands are not in SPEC yet",
-    restoreReport: null,
-  },
-});
-
 const tauriBackend: Backend = {
   kind: "tauri",
   commands: wrappedTauriCommands,
@@ -65,22 +53,13 @@ const tauriBackend: Backend = {
     };
     return ev.listen((e) => (cb as (p: unknown) => void)(e.payload));
   },
-  // PENDING REQ-1 — no-ops until SPEC v0.3.0.
-  pending: {
-    openSettings: pendingNotImplemented,
-    hidePopover: pendingNotImplemented,
-    onSettingsSectionRequested: async () => () => {},
-    onPopoverShown: async () => () => {},
-  },
 };
 
 export const backend: Backend = USE_MOCK ? mockBackend : tauriBackend;
 export const commands: Commands = backend.commands;
 export const on: Backend["on"] = backend.on.bind(backend);
-/** PENDING REQ-1 */
-export const pendingWindow = backend.pending;
 
-/** `popover` / `settings` inside Tauri (REQ-1), `null` in a plain browser. */
+/** `popover` / `settings` inside Tauri (SPEC §2.8), `null` in a plain browser. */
 export function windowLabel(): string | null {
   if (!IN_TAURI) return null;
   try {

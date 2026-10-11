@@ -93,6 +93,8 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   SETTINGS_SAVE_FAILED: "Settings could not be saved.",
   LAUNCH_AT_LOGIN_FAILED: "Launch at login could not be changed.",
   DIAGNOSTICS_EXPORT_FAILED: "Diagnostics could not be exported.",
+  DIAGNOSTICS_NOT_FOUND: "No diagnostics export found. Export diagnostics first.",
+  WINDOW_UNAVAILABLE: "The app window could not be shown.",
 };
 
 export const ALL_ERROR_CODES = Object.keys(ERROR_MESSAGES) as ErrorCode[];

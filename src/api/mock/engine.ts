@@ -39,7 +39,6 @@ import type {
   EventMap,
   EventName,
   Result,
-  SettingsSection,
   Unlisten,
 } from "../types";
 import { ERROR_MESSAGES, appError } from "./errors";
@@ -251,9 +250,8 @@ export class MockEngine {
   private listeners = new Map<EventName, Set<(p: unknown) => void>>();
   private anyListeners = new Set<(name: string, payload: unknown) => void>();
   private devListeners = new Set<() => void>();
-  // PENDING REQ-1
-  private sectionListeners = new Set<(s: SettingsSection) => void>();
-  private shownListeners = new Set<() => void>();
+  /** Path of the latest diagnostics export (reveal_diagnostics reveals only this). */
+  private lastExport: string | null = null;
   onQuit: (() => void) | null = null;
 
   constructor() {
@@ -271,7 +269,7 @@ export class MockEngine {
     return () => set!.delete(h);
   }
 
-  /** Dev page event monitor. Includes PENDING REQ-1 events. */
+  /** Dev page event monitor (also shows window commands as pseudo-events). */
   onAny(cb: (name: string, payload: unknown) => void): Unlisten {
     this.anyListeners.add(cb);
     return () => this.anyListeners.delete(cb);
@@ -663,8 +661,6 @@ export class MockEngine {
       trigger,
       fullyRestored: items.every((i) => clean(i.result)),
       items,
-      // DEPRECATED mirror (SPEC 0.3.0), still required by the type.
-      actions: items.map((i) => ({ item: i.label, ok: clean(i.result), message: i.errorMessage ?? i.action })),
     };
   }
 
@@ -1101,6 +1097,7 @@ export class MockEngine {
           ? `C:\\Users\\you\\Downloads\\EdgeClient-diagnostics-${stamp}.zip`
           : `/Users/you/Downloads/EdgeClient-diagnostics-${stamp}.zip`;
         this.log("info", "app", "Diagnostics exported (redacted)");
+        this.lastExport = path;
         return ok({ path });
       }),
 
@@ -1131,6 +1128,25 @@ export class MockEngine {
         if (this.status.state !== "disconnected") await this.runDisconnect("quit");
         this.log("info", "app", "Quit");
         setTimeout(() => this.onQuit?.(), 0);
+        return ok(null);
+      }),
+
+    // SPEC §2.8 windows. In the browser both "windows" are on one dev page.
+    hidePopover: () =>
+      this.call("hidePopover", () => {
+        this.anyListeners.forEach((h) => h("· hidePopover (command)", null));
+        return ok(null);
+      }),
+    openSettings: (section) =>
+      this.call("openSettings", () => {
+        this.anyListeners.forEach((h) => h("· openSettings (command)", { section }));
+        if (section) this.emit("settingsSectionRequested", { section });
+        return ok(null);
+      }),
+    revealDiagnostics: () =>
+      this.call("revealDiagnostics", () => {
+        if (!this.lastExport) return fail(appError("DIAGNOSTICS_NOT_FOUND"));
+        this.anyListeners.forEach((h) => h("· revealDiagnostics (command)", { path: this.lastExport }));
         return ok(null);
       }),
   };
@@ -1395,7 +1411,7 @@ export class MockEngine {
 
     if (outcome === "reattached") {
       this.installedHelper();
-      const report: RecoveryReport = { outcome, at: nowIso(), restore: null, actions: [] };
+      const report: RecoveryReport = { outcome, at: nowIso(), restore: null };
       this.setActive(this.status.selectedNodeId, "restore");
       this.startTimers();
       this.setStatus({ state: "connected", connectedSince: nowIso(), lastRecovery: report, ...this.osHeld() }, "Re-attached to previous session");
@@ -1409,7 +1425,7 @@ export class MockEngine {
           ? this.dev.restoreFailures
           : ({ dns: "failed", firewall: "failed" } as const);
     const restore = this.buildRestoreReport("recovery", failures);
-    const report: RecoveryReport = { outcome, at: nowIso(), restore, actions: restore.actions };
+    const report: RecoveryReport = { outcome, at: nowIso(), restore };
     this.status = { ...this.status, lastRecovery: report };
     if (!this.applyRestore(restore)) {
       this.setStatus({ state: "disconnected", lastError: null, ...this.flagsFromHeld(false) }, "Previous network settings restored");
@@ -1460,14 +1476,9 @@ export class MockEngine {
     this.emit("helperStatusChanged", { status: this.helper });
   }
 
-  // PENDING REQ-1 — simulated window plumbing for the dev page.
-  emitSettingsSection(section: SettingsSection) {
-    this.anyListeners.forEach((h) => h("settingsSectionRequested (PENDING REQ-1)", { section }));
-    this.sectionListeners.forEach((h) => h(section));
-  }
+  /** The tray click that shows the popover (SPEC §2.8). */
   emitPopoverShown() {
-    this.anyListeners.forEach((h) => h("popoverShown (PENDING REQ-1)", null));
-    this.shownListeners.forEach((h) => h());
+    this.emit("popoverShown", null);
   }
 
   asBackend(): Backend {
@@ -1475,23 +1486,6 @@ export class MockEngine {
       kind: "mock",
       commands: this.commands,
       on: async (name, cb) => this.on(name, cb),
-      // PENDING REQ-1
-      pending: {
-        openSettings: async (section) => {
-          await new Promise((r) => setTimeout(r, this.dev.ipcDelayMs));
-          if (section) this.emitSettingsSection(section);
-          return ok(null);
-        },
-        hidePopover: async () => ok(null),
-        onSettingsSectionRequested: async (cb) => {
-          this.sectionListeners.add(cb);
-          return () => this.sectionListeners.delete(cb);
-        },
-        onPopoverShown: async (cb) => {
-          this.shownListeners.add(cb);
-          return () => this.shownListeners.delete(cb);
-        },
-      },
     };
   }
 }

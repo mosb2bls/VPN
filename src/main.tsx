@@ -8,8 +8,8 @@ import { startStore } from "./state/store";
 import "./design/tokens.css";
 import "./dev/dev.css";
 
-// Route on the Tauri window label (REQ-1: `popover` / `settings`). In a plain
-// browser, or the current single `main` window, show the dev page.
+// Route on the Tauri window label (SPEC §2.8: `popover` / `settings`). In a
+// plain browser, show the dev page with both side by side.
 const label = windowLabel();
 const root =
   label === "popover" ? <PopoverDebug /> : label === "settings" ? <SettingsDebug /> : <DevPage />;

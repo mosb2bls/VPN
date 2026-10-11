@@ -121,6 +121,10 @@ export async function startStore() {
         pushActivity("error", `Networking not fully restored: ${bad.map((i) => i.label).join(", ")}`, undefined, p.report.at);
       }
     }),
+    // Popover shown from the tray (popover window only): refresh in case anything was missed.
+    on("popoverShown", () => {
+      void commands.getStatus().then((r) => r.status === "ok" && applyStatus(r.data));
+    }),
     on("rulesUpdated", (p) => {
       if (!p.ok && p.status.lastError) pushActivity("warn", p.status.lastError.message, p.status.lastError);
     }),

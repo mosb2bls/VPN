@@ -1,7 +1,7 @@
 // U1.1 debug view of the settings window: exercises every settings-side
 // command against the mock/real backend. Visual design comes in U3.
 import { useEffect, useState } from "react";
-import { commands, pendingWindow } from "../api/client";
+import { commands, on } from "../api/client";
 import type {
   AppInfo,
   AppSettings,
@@ -13,7 +13,7 @@ import type {
   RulesStatus,
   SafetySettings,
 } from "../api/bindings";
-import type { SettingsSection } from "../api/types";
+import type { SettingsSection } from "../api/bindings";
 import { protocolBadge } from "../lib/format";
 import { useApp } from "../state/store";
 import { useRun, type RunOutcome } from "./useRun";
@@ -73,7 +73,7 @@ export function SettingsDebug() {
   const [section, setSection] = useState<SettingsSection>("nodes");
   useEffect(() => {
     let off: (() => void) | undefined;
-    void pendingWindow.onSettingsSectionRequested(setSection).then((u) => (off = u));
+    void on("settingsSectionRequested", (p) => setSection(p.section)).then((u) => (off = u));
     return () => off?.();
   }, []);
 
@@ -275,7 +275,8 @@ function Logs() {
           ))}
         </select>
         <button onClick={() => run("exportDiagnostics", commands.exportDiagnostics(), (d) => d.path)}>Export diagnostics</button>
-        <button onClick={() => run("restoreNetworking", commands.restoreNetworking(), (r) => (r.fullyRestored ? "fully restored" : `incomplete: ${r.actions.filter((a) => !a.ok).map((a) => a.item).join(", ")}`))}>
+        <button onClick={() => run("revealDiagnostics", commands.revealDiagnostics())}>Reveal</button>
+        <button onClick={() => run("restoreNetworking", commands.restoreNetworking(), (r) => (r.fullyRestored ? "fully restored" : "incomplete"))}>
           Restore networking
         </button>
       </div>

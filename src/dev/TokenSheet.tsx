@@ -145,12 +145,12 @@ export function TokenSheet() {
           <div className="grid grid-cols-2 gap-10">
             <div className="flex flex-col gap-5">
               <MetaLabel muted>State word · Archivo 850 · 30 px · width 82 % · box = popover content width 264 px</MetaLabel>
-              {["CONNECTED", "FAILING OVER", "NOT RESTORED", "DIRECT — NOT PROXIED"].map((w) => (
+              {["CONNECTED", "FAILING OVER", "NOT RESTORED", "DIRECT"].map((w) => (
                 <div key={w} className="w-[264px] outline outline-1 outline-grid">
                   <div className="state-word">{w}</div>
                 </div>
               ))}
-              <MetaLabel muted>Width axis for “FAILING OVER” (decision)</MetaLabel>
+              <MetaLabel muted>Width axis for “FAILING OVER” — 82 % approved</MetaLabel>
               {[70, 82, 92, 100].map((wd) => (
                 <div key={wd} className="flex w-[340px] items-baseline gap-3">
                   <span className="w-[36px] label text-ink-muted">{wd}%</span>
@@ -177,12 +177,9 @@ export function TokenSheet() {
           </div>
 
           <div className="mt-8 grid grid-cols-2 gap-10">
-            {[
-              { name: "IBM Plex Mono", cls: "font-mono" },
-              { name: "JetBrains Mono", cls: "font-mono-alt" },
-            ].map((m) => (
+            {[{ name: "IBM Plex Mono", cls: "font-mono" }].map((m) => (
               <div key={m.name} className={`${m.cls} flex flex-col gap-3 border border-line p-4`}>
-                <div className="text-[10px] tracking-[0.14em] text-ink-muted uppercase">Mono candidate · {m.name}</div>
+                <div className="text-[10px] tracking-[0.14em] text-ink-muted uppercase">Mono · {m.name} (approved)</div>
                 <div className="flex justify-between text-[10px] tracking-[0.14em] uppercase">
                   <span>EdgeClient</span>
                   <span>01 / Status</span>
@@ -233,7 +230,7 @@ export function TokenSheet() {
           </div>
         </Section>
 
-        <Section n="05" title="Frame + grid at real popover size (decision: module)">
+        <Section n="05" title="Frame + grid at real popover size · module 24 (approved)">
           <div className="mb-3 flex gap-3">
             <button className="label border border-ink px-2 py-1" onClick={() => setGrain((g) => !g)}>
               Grain: {grain ? "on" : "off"}
@@ -242,7 +239,6 @@ export function TokenSheet() {
           <div className="flex gap-10">
             {[
               { module: 24, cols: 12, rows: 17 },
-              { module: 32, cols: 9, rows: 12 },
             ].map((g) => (
               <figure key={g.module} className="flex flex-col gap-2">
                 <MetaLabel muted>
@@ -268,14 +264,8 @@ export function TokenSheet() {
               </figure>
             ))}
             <div className="flex max-w-[300px] flex-col gap-3 text-secondary text-ink-muted">
-              <p>Both frames are 288 px wide (26 px side margins leave room for the registration dashes).</p>
-              <p>
-                <b className="text-ink">24 px</b> gives 12 columns: finer alignment for a dense popover (rows of controls are 24 or 48 px).
-              </p>
-              <p>
-                <b className="text-ink">32 px</b> is closer to the reference’s airy 14 × 7 look but leaves only 9 columns for
-                segmented controls and stats.
-              </p>
+              <p>Frame 288 × 408 px, 26 px side margins (room for the registration dashes), 36 px top and bottom for the corner labels.</p>
+              <p>12 × 17 modules of 24 px: control rows are 24 or 48 px tall and align to the grid.</p>
             </div>
           </div>
         </Section>

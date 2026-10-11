@@ -76,7 +76,7 @@ export function DevPanel() {
           <button onClick={() => void mockEngine.simulateLaunchRecovery("restored")}>Launch: restored</button>
           <button onClick={() => void mockEngine.simulateLaunchRecovery("restore_incomplete")}>Launch: incomplete</button>
           <button onClick={() => mockEngine.scheduledRulesUpdate()}>Scheduled rules update</button>
-          <button onClick={() => mockEngine.emitPopoverShown()}>popoverShown (REQ-1)</button>
+          <button onClick={() => mockEngine.emitPopoverShown()}>Tray click → popoverShown</button>
         </div>
         <h4>Helper</h4>
         <div className="dev-grid">

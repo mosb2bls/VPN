@@ -1,7 +1,7 @@
 # EdgeClient — UI notes
 
 Owner: UI agent. Approved design decisions, tokens and frontend structure.
-Built against **SPEC v0.3.0**.
+Built against **SPEC v1.0.0**.
 
 ## 1. Approved decisions (U0)
 
@@ -14,6 +14,12 @@ Built against **SPEC v0.3.0**.
 | D5 | Colour: ink `#161512`, paper `#F2EEE5` (printed values from the references). Accents sampled: cobalt `#2439BC`, vermilion `#D34F2E`, mustard `#E7C24E`. |
 | D6 | Contrast: vermilion for dot / fills / borders only; `#B8401F` where red text is unavoidable (4.8:1). `ink-muted` ≈ 65 % ink = `#625F58` (≈ 5:1). Mustard only as a fill with ink text. |
 | D7 | Popover state list: OFF, CONNECTING, CONNECTED, DEGRADED, FAILING OVER, RECONNECTING, DIRECT, DISCONNECTING, RECOVERING, ERROR, BLOCKED (`killSwitchActive`), HELPER MISSING (TUN + helper not installed). |
+| D9 | Mono font: **IBM Plex Mono** (JetBrains Mono removed). |
+| D10 | Grid module **24 px**: popover frame 288 × 408 = 12 × 17 modules, 26 px side margins, 36 px top/bottom label bands. |
+| D11 | State word width **82 %** (Archivo 850, 30 px). |
+| D12 | DIRECT: the big word is **DIRECT**; directly under it a mono line `NOT PROXIED — NO PROTECTION`. Hollow ink ring dot (D3). |
+| D13 | Mustard dot always has a 1 px ink outline (mustard vs paper is 1.5:1) and is always paired with the state word. |
+| D14 | Red banners (BLOCKED, NOT RESTORED): vermilion border/bar with **ink text on paper**; never text on a vermilion fill. |
 | D8 | **NOT RESTORED** (partial restore, SPEC §2.7): shown whenever `lastRestore.fullyRestored` is false and the app is not proxying; never looks like OFF. Lists each failed/skipped item, offers Retry (Restore networking) and explains `--restore-networking`. Only an engaged kill switch (BLOCKED) ranks above it. |
 
 ## 2. Frontend structure
@@ -68,13 +74,17 @@ Mock timings are shortened (probe round every 3 s instead of `probeIntervalSecs`
 
 ### Pending (not in SPEC yet)
 
-Marked `// PENDING REQ-n` in code; mock-only until the SPEC version lands.
+None. (REQ-1 landed in SPEC v1.0.0; window commands/events are real.)
 
-| REQ | What | Where |
-|---|---|---|
-| REQ-1 | `openSettings(section)`, `hidePopover()`, `settingsSectionRequested`, `popoverShown`, window labels | `api/types.ts` `PendingWindowApi`, `client.ts` (real: returns `NOT_IMPLEMENTED`), mock engine |
+### Windows (SPEC §2.8)
 
-## 3. Design tokens (U1.2 — proposed, pending owner approval)
+`popover` and `settings` both load `/`; `main.tsx` routes on the window label. Esc in
+the popover calls `hidePopover()`. `popoverShown` (popover only) refreshes `getStatus()`
+and replays the open animation; `settingsSectionRequested` (settings only) switches the
+section. The real app runs with `cargo run -p edge-app` while the Vite server is up
+(`npm run tauri dev` would collide on port 1420).
+
+## 3. Design tokens (approved U1.2)
 
 Source of truth: `src/design/tokens.css` (Tailwind v4 `@theme`) and
 `src/design/motion.ts`. Shown on the dev page → **Tokens** tab.
@@ -99,7 +109,7 @@ No text on a vermilion fill (neither ink 4.3:1 nor paper 3.6:1 reaches 4.5:1).
 ### Type
 
 - **Archivo Variable** (weights 100–900, width 62–125 %): state word, numbers, body.
-- **Mono**: IBM Plex Mono or JetBrains Mono (decision pending).
+- **Mono**: IBM Plex Mono 400/500/600 (D9).
 - Scale (popover): `label` 10 px mono uppercase +0.14em · `label-lg` 11 · `secondary`
   12 · `body` 13 · `number` 20 tabular · `state` 30, weight 850, width 82 %.
 - Utilities: `label`, `state-word`, `tabular`, `paper-grain`.
@@ -115,8 +125,7 @@ No text on a vermilion fill (neither ink 4.3:1 nor paper 3.6:1 reaches 4.5:1).
 
 Ink frame 1.5 px; 5 px ticks above the top edge at every grid column; 12 px registration
 dashes 6 px outside each corner; corner labels 12 px outside the frame. Popover
-geometry: frame 288 px wide (26 px side margins), module 24 (12 × 17) or 32 (9 × 12) —
-decision pending.
+geometry: frame 288 × 408 px, module 24 (12 × 17), 26 px side margins (D10).
 
 ### Motion
 
@@ -138,8 +147,7 @@ decision pending.
 | motion | 13.4.4 | component animation (§7 of the UI prompt) |
 | tailwindcss, @tailwindcss/vite | 4.3.3 (dev) | tokens as theme variables + utilities |
 | @fontsource-variable/archivo | 5.3.0 | Archivo with width axis, bundled locally (OFL) |
-| @fontsource/ibm-plex-mono | 5.3.0 | mono candidate, bundled locally (OFL) |
-| @fontsource-variable/jetbrains-mono | 5.3.0 | mono candidate — removed after the decision (OFL) |
+| @fontsource/ibm-plex-mono | 5.3.0 | mono font, bundled locally (OFL) |
 
 Versions are pinned exactly and were published at least two weeks before install.
 Font licences ship in `public/licenses/` (copied into the app bundle).

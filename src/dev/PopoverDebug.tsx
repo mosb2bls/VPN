@@ -1,7 +1,7 @@
 // U1.1 debug view of the popover: every value the real popover will show, with
 // working controls, but no visual design yet (that is U2).
 import { useEffect, useState } from "react";
-import { commands, pendingWindow } from "../api/client";
+import { commands } from "../api/client";
 import type { CaptureMode, RoutingMode } from "../api/bindings";
 import { protocolBadge, rate, since, transport } from "../lib/format";
 import { selectLastEvent, selectNotRestored, useApp } from "../state/store";
@@ -169,7 +169,7 @@ export function PopoverDebug() {
       <div className="dbg-meta dbg-foot">
         <span>{shown ? `${protocolBadge(shown.protocol)} · ${transport(shown.protocol)} ${shown.port}` : "—"}</span>
         <span className="dbg-links">
-          <button onClick={() => run("openSettings (PENDING REQ-1)", pendingWindow.openSettings("nodes"))}>Settings</button>
+          <button onClick={() => run("openSettings", commands.openSettings("nodes"))}>Settings</button>
           <button onClick={() => run("restoreNetworking", commands.restoreNetworking(), (r) => (r.fullyRestored ? "fully restored" : "incomplete"))}>
             Restore
           </button>
