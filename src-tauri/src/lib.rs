@@ -1,4 +1,5 @@
 pub mod api;
+mod shell;
 mod stub;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -8,13 +9,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(api::commands::AppState::default())
+        .manage(shell::ShellState::default())
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
-            use tauri::Manager;
             builder.mount_events(app);
-            if let Some(w) = app.get_webview_window("main") {
-                let _ = w.set_title(edge_core::APP_NAME);
-            }
+            shell::setup(app)?;
             Ok(())
         })
         .run(tauri::generate_context!())

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "settings",
+  "description": "Settings window. Drag-and-drop (QR images) is enabled in tauri.conf.json; drop events arrive via core:default event/webview permissions. Diagnostics reveal is the reveal_diagnostics command (no opener permission exposed).",
+  "windows": ["settings"],
+  "permissions": ["core:default"]
+}

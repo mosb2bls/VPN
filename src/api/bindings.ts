@@ -54,11 +54,20 @@ export const commands = {
 	 */
 	restoreNetworking: () => typedError<RestoreReport, AppError>(__TAURI_INVOKE("restore_networking")),
 	getAppInfo: () => typedError<AppInfo, AppError>(__TAURI_INVOKE("get_app_info")),
-	/**
-	 *  Disconnect, restore networking, then exit. In B1 there is no OS state to
-	 *  restore, so this exits immediately.
-	 */
+	/**  Disconnect, restore networking, then exit. */
 	quitApp: () => typedError<null, AppError>(__TAURI_INVOKE("quit_app")),
+	/**  Hide the popover (e.g. on Esc). No-op if already hidden. */
+	hidePopover: () => typedError<null, AppError>(__TAURI_INVOKE("hide_popover")),
+	/**
+	 *  Show and focus the settings window, hide the popover, and (if `section` is
+	 *  set) send `settingsSectionRequested` to the settings window.
+	 */
+	openSettings: (section: "nodes" | "connection" | "failover" | "safety" | "rules" | "helper" | "startup" | "logs" | "about" | null) => typedError<null, AppError>(__TAURI_INVOKE("open_settings", { section })),
+	/**
+	 *  Reveal the most recent diagnostics export in Finder / Explorer. Only that
+	 *  file can be revealed; there is no arbitrary-path reveal.
+	 */
+	revealDiagnostics: () => typedError<null, AppError>(__TAURI_INVOKE("reveal_diagnostics")),
 };
 
 /** Events */
@@ -69,15 +78,17 @@ export const events = {
 	healthCheck: makeEvent<HealthCheck>("health-check"),
 	helperStatusChanged: makeEvent<HelperStatusChanged>("helper-status-changed"),
 	nodesChanged: makeEvent<NodesChanged>("nodes-changed"),
+	popoverShown: makeEvent<PopoverShown>("popover-shown"),
 	recoveryCompleted: makeEvent<RecoveryCompleted>("recovery-completed"),
 	restoreReportChanged: makeEvent<RestoreReportChanged>("restore-report-changed"),
 	rulesUpdated: makeEvent<RulesUpdated>("rules-updated"),
+	settingsSectionRequested: makeEvent<SettingsSectionRequested>("settings-section-requested"),
 	statusChanged: makeEvent<StatusChanged>("status-changed"),
 	trafficStatsUpdated: makeEvent<TrafficStatsUpdated>("traffic-stats-updated"),
 };
 
 /* Constants */
-export const SPEC_VERSION = "0.3.0" as const;
+export const SPEC_VERSION = "1.0.0" as const;
 
 /* Types */
 /**  The node carrying traffic changed. */
@@ -133,7 +144,7 @@ export type DiagnosticsExport = {
 
 export type DnsProfile = "mainland" | "overseas";
 
-export type ErrorCode = "NOT_IMPLEMENTED" | "INTERNAL" | "INVALID_ARGUMENT" | "BUSY" | "UNSUPPORTED_PLATFORM" | "NODE_NOT_FOUND" | "NO_NODE_SELECTED" | "NO_NODES" | "NODE_DUPLICATE" | "REORDER_MISMATCH" | "VALIDATION_FAILED" | "LINK_UNSUPPORTED_SCHEME" | "LINK_MALFORMED" | "LINK_UNSUPPORTED_PARAM" | "LINK_MISSING_PARAM" | "LINK_INVALID_VALUE" | "IMPORT_EMPTY" | "CLIPBOARD_EMPTY" | "CLIPBOARD_UNAVAILABLE" | "QR_NOT_FOUND" | "QR_IMAGE_UNREADABLE" | "QR_TOO_MANY_CODES" | "FIELD_REQUIRED" | "FIELD_INVALID" | "FIELD_OUT_OF_RANGE" | "FIELD_INVALID_HOST" | "FIELD_INVALID_PORT" | "FIELD_INVALID_PORT_RANGE" | "FIELD_INVALID_UUID" | "FIELD_INVALID_PUBLIC_KEY" | "FIELD_INVALID_SHORT_ID" | "FIELD_INVALID_FINGERPRINT" | "FIELD_INVALID_PIN" | "FIELD_INVALID_SNI" | "FIELD_INVALID_BANDWIDTH" | "FIELD_TOO_LONG" | "FIELD_CANNOT_CLEAR" | "KEYCHAIN_UNAVAILABLE" | "KEYCHAIN_ACCESS_DENIED" | "SECRET_MISSING" | "CORE_BINARY_MISSING" | "CORE_CHECKSUM_MISMATCH" | "CORE_CONFIG_INVALID" | "CORE_START_FAILED" | "CORE_CRASHED" | "CORE_API_UNREACHABLE" | "PORT_IN_USE" | "DNS_BOOTSTRAP_FAILED" | "NODE_UNREACHABLE" | "NODE_HANDSHAKE_FAILED" | "NODE_AUTH_FAILED" | "PROBE_TIMEOUT" | "PROBE_FAILED" | "ALL_NODES_FAILED" | "SYSTEM_PROXY_SET_FAILED" | "SYSTEM_PROXY_RESTORE_FAILED" | "NETWORK_CHANGED" | "HELPER_NOT_INSTALLED" | "HELPER_INSTALL_CANCELLED" | "HELPER_INSTALL_FAILED" | "HELPER_UNINSTALL_FAILED" | "HELPER_UNREACHABLE" | "HELPER_VERSION_MISMATCH" | "HELPER_AUTH_FAILED" | "TUN_START_FAILED" | "KILL_SWITCH_FAILED" | "KILL_SWITCH_REMOVE_FAILED" | "TUN_STOP_FAILED" | "ROUTE_RESTORE_FAILED" | "DNS_RESTORE_FAILED" | "IPV6_RESTORE_FAILED" | "JOURNAL_CORRUPT" | "RESTORE_INCOMPLETE" | "RULES_DOWNLOAD_FAILED" | "RULES_VALIDATION_FAILED" | "RULES_UPDATE_IN_PROGRESS" | "SETTINGS_INVALID" | "SETTINGS_SAVE_FAILED" | "LAUNCH_AT_LOGIN_FAILED" | "DIAGNOSTICS_EXPORT_FAILED";
+export type ErrorCode = "NOT_IMPLEMENTED" | "INTERNAL" | "INVALID_ARGUMENT" | "BUSY" | "UNSUPPORTED_PLATFORM" | "NODE_NOT_FOUND" | "NO_NODE_SELECTED" | "NO_NODES" | "NODE_DUPLICATE" | "REORDER_MISMATCH" | "VALIDATION_FAILED" | "LINK_UNSUPPORTED_SCHEME" | "LINK_MALFORMED" | "LINK_UNSUPPORTED_PARAM" | "LINK_MISSING_PARAM" | "LINK_INVALID_VALUE" | "IMPORT_EMPTY" | "CLIPBOARD_EMPTY" | "CLIPBOARD_UNAVAILABLE" | "QR_NOT_FOUND" | "QR_IMAGE_UNREADABLE" | "QR_TOO_MANY_CODES" | "FIELD_REQUIRED" | "FIELD_INVALID" | "FIELD_OUT_OF_RANGE" | "FIELD_INVALID_HOST" | "FIELD_INVALID_PORT" | "FIELD_INVALID_PORT_RANGE" | "FIELD_INVALID_UUID" | "FIELD_INVALID_PUBLIC_KEY" | "FIELD_INVALID_SHORT_ID" | "FIELD_INVALID_FINGERPRINT" | "FIELD_INVALID_PIN" | "FIELD_INVALID_SNI" | "FIELD_INVALID_BANDWIDTH" | "FIELD_TOO_LONG" | "FIELD_CANNOT_CLEAR" | "KEYCHAIN_UNAVAILABLE" | "KEYCHAIN_ACCESS_DENIED" | "SECRET_MISSING" | "CORE_BINARY_MISSING" | "CORE_CHECKSUM_MISMATCH" | "CORE_CONFIG_INVALID" | "CORE_START_FAILED" | "CORE_CRASHED" | "CORE_API_UNREACHABLE" | "PORT_IN_USE" | "DNS_BOOTSTRAP_FAILED" | "NODE_UNREACHABLE" | "NODE_HANDSHAKE_FAILED" | "NODE_AUTH_FAILED" | "PROBE_TIMEOUT" | "PROBE_FAILED" | "ALL_NODES_FAILED" | "SYSTEM_PROXY_SET_FAILED" | "SYSTEM_PROXY_RESTORE_FAILED" | "NETWORK_CHANGED" | "HELPER_NOT_INSTALLED" | "HELPER_INSTALL_CANCELLED" | "HELPER_INSTALL_FAILED" | "HELPER_UNINSTALL_FAILED" | "HELPER_UNREACHABLE" | "HELPER_VERSION_MISMATCH" | "HELPER_AUTH_FAILED" | "TUN_START_FAILED" | "KILL_SWITCH_FAILED" | "KILL_SWITCH_REMOVE_FAILED" | "TUN_STOP_FAILED" | "ROUTE_RESTORE_FAILED" | "DNS_RESTORE_FAILED" | "IPV6_RESTORE_FAILED" | "JOURNAL_CORRUPT" | "RESTORE_INCOMPLETE" | "RULES_DOWNLOAD_FAILED" | "RULES_VALIDATION_FAILED" | "RULES_UPDATE_IN_PROGRESS" | "SETTINGS_INVALID" | "SETTINGS_SAVE_FAILED" | "LAUNCH_AT_LOGIN_FAILED" | "DIAGNOSTICS_EXPORT_FAILED" | "DIAGNOSTICS_NOT_FOUND" | "WINDOW_UNAVAILABLE";
 
 /**
  *  An error not tied to a command call (background failures).
@@ -325,6 +336,9 @@ export type NodesChanged = {
 
 export type Platform = "macos" | "windows" | "other";
 
+/**  Sent to the `popover` window only, each time it is shown. (REQ-1) */
+export type PopoverShown = null;
+
 export type ProbeResult = {
 	/**  Short label such as `gstatic`, `cloudflare`. Never includes credentials. */
 	target: string,
@@ -358,19 +372,6 @@ export type RecoveryReport = {
 	at: string,
 	/**  The restore that recovery ran; `None` when the session was re-attached. (REQ-4) */
 	restore: RestoreReport | null,
-	/**
-	 *  DEPRECATED since SPEC 0.3.0 — mirror of `restore.items`; removed in the next
-	 *  major version. Use `restore`.
-	 */
-	actions: RestoreAction[],
-};
-
-/**  DEPRECATED since SPEC 0.3.0 — use [`RestoreItem`]. */
-export type RestoreAction = {
-	/**  Human-readable item, e.g. "System proxy (Wi-Fi)", "pf kill switch". */
-	item: string,
-	ok: boolean,
-	message: string | null,
 };
 
 export type RestoreItem = {
@@ -417,11 +418,6 @@ export type RestoreReport = {
 	 *  tun_session, routes, dns, ipv6, system_proxy, firewall.
 	 */
 	items: RestoreItem[],
-	/**
-	 *  DEPRECATED since SPEC 0.3.0 — mirror of `items`; removed in the next major
-	 *  version. Use `items`.
-	 */
-	actions: RestoreAction[],
 };
 
 /**
@@ -500,6 +496,17 @@ export type SafetySettings = {
  *  for optional secrets (HY2 obfs password).
  */
 export type SecretInput = { kind: "keep" } | { kind: "set"; value: string } | { kind: "clear" };
+
+/**  Section of the settings window. (REQ-1) */
+export type SettingsSection = "nodes" | "connection" | "failover" | "safety" | "rules" | "helper" | "startup" | "logs" | "about";
+
+/**
+ *  Sent to the `settings` window only, when it should switch to a section
+ *  (from `open_settings(section)` or the tray menu). (REQ-1)
+ */
+export type SettingsSectionRequested = {
+	section: SettingsSection,
+};
 
 export type Status = {
 	state: ConnectionState,

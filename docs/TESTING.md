@@ -18,6 +18,7 @@ npx tsc --noEmit -p .      # TypeScript check of the generated bindings (+ UI co
 | Restore wire format (REQ-4) | `edge-app` `api::types::tests::restore_incomplete_error_carries_per_item_report` | passing |
 | UI contract | `edge-app` `api::tests::bindings_are_current`, `spec_md_version_matches`, `api::types::tests::tagged_union_wire_shapes` | passing |
 | Settings validation | `edge-app` `api::commands::tests::*` | passing |
+| Popover placement (REQ-1) | `edge-app` `shell::position::tests::*` — macOS menu bar, right-edge clamp, Windows taskbar bottom/top/left/right, negative-origin second monitor, auto-hide fallback | passing (maths only) |
 
 ## 2. Planned macOS system tests (local only; owner runs root steps)
 
@@ -28,6 +29,7 @@ anchor rules), helper/TUN state. Scheduled phase in brackets.
 | ID | Test | Phase | Status |
 |---|---|---|---|
 | M-RESTORE-PARTIAL | **Partial restore failure (REQ-4).** With a debug-only fault-injection switch, make the DNS restore step fail during `disconnect`, then during `restore_networking`. Pass: both return `RESTORE_INCOMPLETE` with a 6-item report where `dns` is `failed` (`DNS_RESTORE_FAILED`) and the others are `restored`/`not_needed`; `Status.state = error`; `killSwitchActive`/`systemProxySet`/`tunActive` match the snapshot; `restoreReportChanged` fired; after app restart `lastRestore` is the same incomplete report; removing the fault and running Restore networking returns a full report, state `disconnected`, snapshot equals the pre-connect snapshot. Repeat with the firewall step failing (kill switch must still be reported active and actually block). | B2 (system proxy items), B3 (TUN/DNS/IPv6/firewall items) | not run |
+| M-SHELL | **Windows and tray (REQ-1).** Launch: no Dock icon, tray icon present, no window visible. Left-click tray: popover appears directly below the icon, inside the screen, with a shadow; click elsewhere → hides; click tray while open → closes (does not flicker back). Esc in popover → hides (once the UI wires it). Right-click / Ctrl-click tray → menu with header, Connect, Node ▸, Routing ▸, Capture ▸, Restore networking, Settings…, Quit; choosing a node / mode updates the check marks; Connect shows an error (stub). Settings… → settings window focused; close button hides it; Quit exits. Repeat on an external monitor. | B1.3 | not run |
 | (others) | Connectivity, DNS leak, IPv6 bypass, kill switch, force-kill, quit/disconnect/direct snapshots, failover, network change — per brief §8 | B2–B4 | not run |
 
 Fault injection is compiled only into debug builds (`cfg(debug_assertions)`) and is never
@@ -39,5 +41,6 @@ Fill in date, app version, SPEC version, Windows build, result.
 
 | ID | Step | Expected | Result |
 |---|---|---|---|
+| W-SHELL | Launch the app. Left-click the tray icon (also from the overflow "^" area) with the taskbar at the bottom, then move the taskbar to the top / left / right if possible, and on a second monitor. | Popover appears next to the icon, fully on screen, never over the taskbar; clicking elsewhere hides it; clicking the icon while open closes it. Right-click shows the menu; Settings… opens the settings window; closing it hides it; Quit exits. | not run |
 | W-RESTORE-PARTIAL | Using a **debug build**, enable the fault-injection switch for the DNS restore step (instructions added in B3). Connect in TUN mode, then Disconnect. Repeat with Settings → Restore networking. | Both show "Restore incomplete" with the per-item list: DNS failed, other items restored/not needed. App state shows Error, not Disconnected. Kill-switch / proxy / TUN indicators match reality (check `netsh interface ipv4 show dnsservers`, `route print`, WFP/firewall rules, Internet Options proxy). Restart the app: the same incomplete report is shown. Disable the fault, Restore networking: full report, state Disconnected, all settings equal the pre-connect values. | not run |
 | W-RESTORE-PARTIAL-FW | Same, with the firewall/kill-switch removal step failing. | Kill switch reported active **and** still blocking proxied destinations; Restore networking after removing the fault clears it. | not run |

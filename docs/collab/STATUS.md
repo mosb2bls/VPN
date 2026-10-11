@@ -4,12 +4,15 @@ Each agent edits only its own section.
 
 ## Backend
 
-- **Phase/step:** B1.2 — REQ-4 restore reporting (done, awaiting owner review).
-  Next: **B1.3 = REQ-1** (popover/settings windows, tray; SPEC v0.4.0), then Phase B2.
-- **SPEC version:** 0.3.0 (`docs/SPEC.md`, `src/api/bindings.ts`)
+- **Phase/step:** B1.3 — REQ-1 windows + tray, and removal of deprecated restore
+  `actions` (done, awaiting owner review). Next: **Phase B2** (core, system proxy mode).
+- **SPEC version:** 1.0.0 (`docs/SPEC.md`, `src/api/bindings.ts`)
 - **Real:** `get_app_info`; input validation in `set_failover_settings` and `set_settings`;
   in-memory `delete_node` / `reorder_nodes` / `select_node` and mode setters (emit
   `nodesChanged` / `statusChanged`); `quit_app` (exits — no OS state exists yet);
+  windows `popover` / `settings` + tray icon and menu (REQ-1; `hide_popover`,
+  `open_settings`, `reveal_diagnostics`, `settingsSectionRequested`, `popoverShown`) —
+  launches cleanly; hand-testing pending (TESTING.md M-SHELL);
   restore orchestration logic in `edge-core` (`restore.rs`, unit-tested with a fake
   restorer — no real OS restore steps yet).
 - **Placeholder data:** `list_nodes` (two `[placeholder] …` nodes, fake values), `get_status`
@@ -21,8 +24,8 @@ Each agent edits only its own section.
 - `TrafficStats.latencyMs`, `Status.lastRestore`, `restoreReportChanged` exist in the
   contract; nothing emits them yet.
 - **No events are emitted** except `nodesChanged` / `statusChanged` from the in-memory setters.
-- **Known issues:** UI files fail `tsc` against SPEC 0.3.0 until the mock/client add the new
-  fields (7 errors, UI-owned). Runtime/dev unaffected.
+- **Known issues:** `npm run tauri dev` fails if another Vite server already holds port
+  1420 (e.g. the UI preview); use `cargo run -p edge-app` against the running server.
 
 ## UI
 

@@ -23,7 +23,7 @@ Template:
 ## REQ-1: Tray popover + settings window, positioning, open-at-section
 - From: ui
 - Date: 2026-10-11
-- Status: accepted (scheduled: backend step B1.3, next step; SPEC v0.4.0 — re-scheduled after REQ-4 by owner)
+- Status: done (SPEC v1.0.0)
 - Need: The app lives in the tray/menu bar with two windows (UI prompt §5). Today
   `tauri.conf.json` has one `main` 800×600 window and capabilities target only `main`.
   The UI needs:
@@ -76,6 +76,15 @@ Template:
     backend phases land (lifecycle polish in B5).
   - macOS: app runs as an accessory app (no Dock icon) — the settings window still
     focuses normally. Tell me if you want a Dock icon while settings is open.
+  (backend, 2026-10-11, B1.3) Implemented as planned — SPEC v1.0.0 §2.8. Labels
+  `popover` / `settings`, both load `/`, created hidden at launch, never destroyed.
+  Commands `hidePopover()`, `openSettings(section | null)`, `revealDiagnostics()`; events
+  `settingsSectionRequested` (to `settings` only) and `popoverShown` (payload `null`, to
+  `popover` only). Popover opaque + native shadow, hides on blur (300 ms tray-click
+  debounce). Tray: left-click toggles popover, right-click menu as specified. Capabilities
+  are `core:default` per window; opener is not exposed (use `revealDiagnostics`).
+  macOS: no Dock icon. Not yet verified by hand: popover placement on real displays,
+  blur/hide feel, macOS right-click menu — see TESTING.md M-SHELL / W-SHELL.
 
 ## REQ-2: Latency in live stats
 - From: ui

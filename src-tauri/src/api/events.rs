@@ -7,7 +7,10 @@ use specta::Type;
 use tauri_specta::Event;
 
 use super::error::AppError;
-use super::types::{HelperStatus, Node, RecoveryReport, RestoreReport, RulesStatus, Status, TrafficStats};
+use super::types::{
+    HelperStatus, Node, RecoveryReport, RestoreReport, RulesStatus, SettingsSection, Status,
+    TrafficStats,
+};
 
 /// Emitted on every connection state or mode change, with the full status.
 #[derive(Serialize, Deserialize, Type, Event, Debug, Clone)]
@@ -135,3 +138,15 @@ pub struct RestoreReportChanged {
 pub struct ErrorRaised {
     pub error: AppError,
 }
+
+/// Sent to the `settings` window only, when it should switch to a section
+/// (from `open_settings(section)` or the tray menu). (REQ-1)
+#[derive(Serialize, Deserialize, Type, Event, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsSectionRequested {
+    pub section: SettingsSection,
+}
+
+/// Sent to the `popover` window only, each time it is shown. (REQ-1)
+#[derive(Serialize, Deserialize, Type, Event, Debug, Clone)]
+pub struct PopoverShown;

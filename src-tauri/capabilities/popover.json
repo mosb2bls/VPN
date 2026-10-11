@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "popover",
+  "description": "Tray popover window. Hiding is done via the hide_popover command.",
+  "windows": ["popover"],
+  "permissions": ["core:default"]
+}

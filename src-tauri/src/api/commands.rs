@@ -1,6 +1,8 @@
 //! Tauri commands. Every command returns `ApiResult<T>`, which the generated
 //! bindings expose as `{ status: "ok", data } | { status: "error", error }`.
 //!
+//! Logic shared with the tray menu lives in [`ops`]; commands are thin wrappers.
+//!
 //! PHASE B1: commands that would touch the network, OS state, keychain or
 //! disk return `NOT_IMPLEMENTED`. Getters return placeholder data from
 //! `crate::stub`; simple setters update in-memory state only (not persisted,
@@ -8,27 +10,107 @@
 
 use std::sync::Mutex;
 
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager};
 use tauri_specta::Event;
 
 use super::error::{ApiResult, AppError, ErrorCode, FieldError};
 use super::events::{NodesChanged, StatusChanged};
 use super::types::*;
+use crate::shell;
 use crate::stub::StubState;
 
 pub type AppState = Mutex<StubState>;
 
-fn lock<'a>(s: &'a State<'_, AppState>) -> ApiResult<std::sync::MutexGuard<'a, StubState>> {
-    s.lock().map_err(|_| AppError::new(ErrorCode::Internal).with_detail("state lock poisoned"))
+/// Run `f` with the state locked. The lock is released before returning, so
+/// callers can emit events / refresh the tray afterwards without deadlocking.
+fn with_state<T>(app: &AppHandle, f: impl FnOnce(&mut StubState) -> ApiResult<T>) -> ApiResult<T> {
+    let state = app.state::<AppState>();
+    let mut guard = state
+        .lock()
+        .map_err(|_| AppError::new(ErrorCode::Internal).with_detail("state lock poisoned"))?;
+    f(&mut guard)
 }
 
-fn emit_nodes(app: &AppHandle, st: &StubState) {
-    let _ = NodesChanged { nodes: st.nodes.clone(), selected_node_id: st.selected_node_id.clone() }
-        .emit(app);
+fn notify_nodes(app: &AppHandle) {
+    if let Ok((nodes, selected_node_id)) =
+        with_state(app, |st| Ok((st.nodes.clone(), st.selected_node_id.clone())))
+    {
+        let _ = NodesChanged { nodes, selected_node_id }.emit(app);
+    }
+    shell::refresh_tray(app);
 }
 
-fn emit_status(app: &AppHandle, st: &StubState, reason: Option<&str>) {
-    let _ = StatusChanged { status: st.status.clone(), reason: reason.map(Into::into) }.emit(app);
+fn notify_status(app: &AppHandle, reason: Option<&str>) {
+    if let Ok(status) = with_state(app, |st| Ok(st.status.clone())) {
+        let _ = StatusChanged { status, reason: reason.map(Into::into) }.emit(app);
+    }
+    shell::refresh_tray(app);
+}
+
+/// Operations shared by commands and the tray menu.
+pub mod ops {
+    use super::*;
+
+    pub fn select_node(app: &AppHandle, id: String) -> ApiResult<Status> {
+        let status = with_state(app, |st| {
+            if !st.nodes.iter().any(|n| n.id == id) {
+                return Err(AppError::new(ErrorCode::NodeNotFound));
+            }
+            st.selected_node_id = Some(id.clone());
+            st.status.selected_node_id = Some(id);
+            Ok(st.status.clone())
+        })?;
+        notify_nodes(app);
+        notify_status(app, None);
+        Ok(status)
+    }
+
+    pub fn set_capture_mode(app: &AppHandle, mode: CaptureMode) -> ApiResult<Status> {
+        let status = with_state(app, |st| {
+            st.status.capture_mode = mode;
+            Ok(st.status.clone())
+        })?;
+        notify_status(app, None);
+        Ok(status)
+    }
+
+    pub fn set_routing_mode(app: &AppHandle, mode: RoutingMode) -> ApiResult<Status> {
+        let status = with_state(app, |st| {
+            st.status.routing_mode = mode;
+            Ok(st.status.clone())
+        })?;
+        notify_status(app, None);
+        Ok(status)
+    }
+
+    pub fn set_dns_profile(app: &AppHandle, profile: DnsProfile) -> ApiResult<Status> {
+        let status = with_state(app, |st| {
+            st.status.dns_profile = profile;
+            Ok(st.status.clone())
+        })?;
+        notify_status(app, None);
+        Ok(status)
+    }
+
+    pub async fn connect(_app: &AppHandle) -> ApiResult<Status> {
+        Err(AppError::not_implemented("connect"))
+    }
+
+    pub async fn disconnect(app: &AppHandle) -> ApiResult<Status> {
+        // Nothing can be connected in B1, so disconnect is a no-op that reports status.
+        with_state(app, |st| Ok(st.status.clone()))
+    }
+
+    pub async fn restore_networking(_app: &AppHandle) -> ApiResult<RestoreReport> {
+        Err(AppError::not_implemented("restore_networking"))
+    }
+
+    /// Disconnect, restore networking, then exit. In B1 there is no OS state
+    /// to restore, so this exits immediately.
+    pub async fn quit(app: &AppHandle) -> ApiResult<()> {
+        app.exit(0);
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -37,8 +119,8 @@ fn emit_status(app: &AppHandle, st: &StubState, reason: Option<&str>) {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn list_nodes(state: State<'_, AppState>) -> ApiResult<Vec<Node>> {
-    Ok(lock(&state)?.nodes.clone())
+pub async fn list_nodes(app: AppHandle) -> ApiResult<Vec<Node>> {
+    with_state(&app, |st| Ok(st.nodes.clone()))
 }
 
 /// Parse one or more share links (one per line) and add the valid ones.
@@ -79,62 +161,52 @@ pub async fn update_node(id: String, form: NodeForm) -> ApiResult<Node> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn delete_node(app: AppHandle, state: State<'_, AppState>, id: String) -> ApiResult<()> {
-    let mut st = lock(&state)?;
-    let before = st.nodes.len();
-    st.nodes.retain(|n| n.id != id);
-    if st.nodes.len() == before {
-        return Err(AppError::new(ErrorCode::NodeNotFound));
-    }
-    if st.selected_node_id.as_deref() == Some(&id) {
-        st.selected_node_id = st.nodes.first().map(|n| n.id.clone());
-        st.status.selected_node_id = st.selected_node_id.clone();
-    }
-    emit_nodes(&app, &st);
+pub async fn delete_node(app: AppHandle, id: String) -> ApiResult<()> {
+    with_state(&app, |st| {
+        let before = st.nodes.len();
+        st.nodes.retain(|n| n.id != id);
+        if st.nodes.len() == before {
+            return Err(AppError::new(ErrorCode::NodeNotFound));
+        }
+        if st.selected_node_id.as_deref() == Some(&id) {
+            st.selected_node_id = st.nodes.first().map(|n| n.id.clone());
+            st.status.selected_node_id = st.selected_node_id.clone();
+        }
+        Ok(())
+    })?;
+    notify_nodes(&app);
     Ok(())
 }
 
 /// `ids` must be a permutation of all current node IDs.
 #[tauri::command]
 #[specta::specta]
-pub async fn reorder_nodes(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    ids: Vec<String>,
-) -> ApiResult<Vec<Node>> {
-    let mut st = lock(&state)?;
-    let mut current: Vec<&str> = st.nodes.iter().map(|n| n.id.as_str()).collect();
-    let mut wanted: Vec<&str> = ids.iter().map(String::as_str).collect();
-    current.sort_unstable();
-    wanted.sort_unstable();
-    if current != wanted {
-        return Err(AppError::new(ErrorCode::ReorderMismatch));
-    }
-    let mut reordered = Vec::with_capacity(ids.len());
-    for id in &ids {
-        if let Some(n) = st.nodes.iter().find(|n| &n.id == id) {
-            reordered.push(n.clone());
+pub async fn reorder_nodes(app: AppHandle, ids: Vec<String>) -> ApiResult<Vec<Node>> {
+    let nodes = with_state(&app, |st| {
+        let mut current: Vec<&str> = st.nodes.iter().map(|n| n.id.as_str()).collect();
+        let mut wanted: Vec<&str> = ids.iter().map(String::as_str).collect();
+        current.sort_unstable();
+        wanted.sort_unstable();
+        if current != wanted {
+            return Err(AppError::new(ErrorCode::ReorderMismatch));
         }
-    }
-    st.nodes = reordered;
-    emit_nodes(&app, &st);
-    Ok(st.nodes.clone())
+        let reordered = ids
+            .iter()
+            .filter_map(|id| st.nodes.iter().find(|n| &n.id == id).cloned())
+            .collect();
+        st.nodes = reordered;
+        Ok(st.nodes.clone())
+    })?;
+    notify_nodes(&app);
+    Ok(nodes)
 }
 
 /// Select a node. When connected this switches the core's selector without a
 /// restart; when disconnected it only changes the selection.
 #[tauri::command]
 #[specta::specta]
-pub async fn select_node(app: AppHandle, state: State<'_, AppState>, id: String) -> ApiResult<Status> {
-    let mut st = lock(&state)?;
-    if !st.nodes.iter().any(|n| n.id == id) {
-        return Err(AppError::new(ErrorCode::NodeNotFound));
-    }
-    st.selected_node_id = Some(id.clone());
-    st.status.selected_node_id = Some(id);
-    emit_nodes(&app, &st);
-    emit_status(&app, &st, None);
-    Ok(st.status.clone())
+pub async fn select_node(app: AppHandle, id: String) -> ApiResult<Status> {
+    ops::select_node(&app, id)
 }
 
 /// Real connectivity test through the node (not a TCP ping).
@@ -151,60 +223,38 @@ pub async fn test_node(id: String) -> ApiResult<NodeTestResult> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn connect() -> ApiResult<Status> {
-    Err(AppError::not_implemented("connect"))
+pub async fn connect(app: AppHandle) -> ApiResult<Status> {
+    ops::connect(&app).await
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn disconnect(state: State<'_, AppState>) -> ApiResult<Status> {
-    // Nothing can be connected in B1, so disconnect is a no-op that reports status.
-    Ok(lock(&state)?.status.clone())
+pub async fn disconnect(app: AppHandle) -> ApiResult<Status> {
+    ops::disconnect(&app).await
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_status(state: State<'_, AppState>) -> ApiResult<Status> {
-    Ok(lock(&state)?.status.clone())
+pub async fn get_status(app: AppHandle) -> ApiResult<Status> {
+    with_state(&app, |st| Ok(st.status.clone()))
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn set_capture_mode(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    mode: CaptureMode,
-) -> ApiResult<Status> {
-    let mut st = lock(&state)?;
-    st.status.capture_mode = mode;
-    emit_status(&app, &st, None);
-    Ok(st.status.clone())
+pub async fn set_capture_mode(app: AppHandle, mode: CaptureMode) -> ApiResult<Status> {
+    ops::set_capture_mode(&app, mode)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn set_routing_mode(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    mode: RoutingMode,
-) -> ApiResult<Status> {
-    let mut st = lock(&state)?;
-    st.status.routing_mode = mode;
-    emit_status(&app, &st, None);
-    Ok(st.status.clone())
+pub async fn set_routing_mode(app: AppHandle, mode: RoutingMode) -> ApiResult<Status> {
+    ops::set_routing_mode(&app, mode)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn set_dns_profile(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    profile: DnsProfile,
-) -> ApiResult<Status> {
-    let mut st = lock(&state)?;
-    st.status.dns_profile = profile;
-    emit_status(&app, &st, None);
-    Ok(st.status.clone())
+pub async fn set_dns_profile(app: AppHandle, profile: DnsProfile) -> ApiResult<Status> {
+    ops::set_dns_profile(&app, profile)
 }
 
 // ---------------------------------------------------------------------------
@@ -213,41 +263,37 @@ pub async fn set_dns_profile(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_failover_settings(state: State<'_, AppState>) -> ApiResult<FailoverSettings> {
-    Ok(lock(&state)?.failover.clone())
+pub async fn get_failover_settings(app: AppHandle) -> ApiResult<FailoverSettings> {
+    with_state(&app, |st| Ok(st.failover.clone()))
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn set_failover_settings(
-    state: State<'_, AppState>,
-    settings: FailoverSettings,
-) -> ApiResult<FailoverSettings> {
-    let mut st = lock(&state)?;
-    let node_ids: Vec<&str> = st.nodes.iter().map(|n| n.id.as_str()).collect();
-    let errors = validate_failover(&settings, &node_ids);
-    if !errors.is_empty() {
-        return Err(AppError::validation(errors));
-    }
-    st.failover = settings;
-    Ok(st.failover.clone())
+pub async fn set_failover_settings(app: AppHandle, settings: FailoverSettings) -> ApiResult<FailoverSettings> {
+    with_state(&app, |st| {
+        let node_ids: Vec<&str> = st.nodes.iter().map(|n| n.id.as_str()).collect();
+        let errors = validate_failover(&settings, &node_ids);
+        if !errors.is_empty() {
+            return Err(AppError::validation(errors));
+        }
+        st.failover = settings;
+        Ok(st.failover.clone())
+    })
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_safety_settings(state: State<'_, AppState>) -> ApiResult<SafetySettings> {
-    Ok(lock(&state)?.safety.clone())
+pub async fn get_safety_settings(app: AppHandle) -> ApiResult<SafetySettings> {
+    with_state(&app, |st| Ok(st.safety.clone()))
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn set_safety_settings(
-    state: State<'_, AppState>,
-    settings: SafetySettings,
-) -> ApiResult<SafetySettings> {
-    let mut st = lock(&state)?;
-    st.safety = settings;
-    Ok(st.safety.clone())
+pub async fn set_safety_settings(app: AppHandle, settings: SafetySettings) -> ApiResult<SafetySettings> {
+    with_state(&app, |st| {
+        st.safety = settings;
+        Ok(st.safety.clone())
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -306,27 +352,66 @@ pub async fn uninstall_helper() -> ApiResult<HelperStatus> {
 }
 
 // ---------------------------------------------------------------------------
+// Windows (REQ-1)
+// ---------------------------------------------------------------------------
+
+/// Hide the popover (e.g. on Esc). No-op if already hidden.
+#[tauri::command]
+#[specta::specta]
+pub async fn hide_popover(app: AppHandle) -> ApiResult<()> {
+    shell::hide_popover(&app)
+}
+
+/// Show and focus the settings window, hide the popover, and (if `section` is
+/// set) send `settingsSectionRequested` to the settings window.
+#[tauri::command]
+#[specta::specta]
+pub async fn open_settings(app: AppHandle, section: Option<SettingsSection>) -> ApiResult<()> {
+    shell::open_settings(&app, section)
+}
+
+/// Reveal the most recent diagnostics export in Finder / Explorer. Only that
+/// file can be revealed; there is no arbitrary-path reveal.
+#[tauri::command]
+#[specta::specta]
+pub async fn reveal_diagnostics(app: AppHandle) -> ApiResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+    let path = app
+        .state::<shell::ShellState>()
+        .last_diagnostics
+        .lock()
+        .ok()
+        .and_then(|p| p.clone())
+        .filter(|p| p.exists())
+        .ok_or_else(|| AppError::new(ErrorCode::DiagnosticsNotFound))?;
+    app.opener()
+        .reveal_item_in_dir(&path)
+        .map_err(|e| AppError::new(ErrorCode::DiagnosticsNotFound).with_detail(e.to_string()))
+}
+
+// ---------------------------------------------------------------------------
 // App
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_settings(state: State<'_, AppState>) -> ApiResult<AppSettings> {
-    Ok(lock(&state)?.settings.clone())
+pub async fn get_settings(app: AppHandle) -> ApiResult<AppSettings> {
+    with_state(&app, |st| Ok(st.settings.clone()))
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn set_settings(state: State<'_, AppState>, settings: AppSettings) -> ApiResult<AppSettings> {
+pub async fn set_settings(app: AppHandle, settings: AppSettings) -> ApiResult<AppSettings> {
     if !(1..=168).contains(&settings.rules_update_interval_hours) {
         return Err(AppError::validation(vec![FieldError::new(
             "rulesUpdateIntervalHours",
             ErrorCode::FieldOutOfRange,
         )]));
     }
-    let mut st = lock(&state)?;
-    st.settings = settings;
-    Ok(st.settings.clone())
+    with_state(&app, |st| {
+        st.settings = settings;
+        Ok(st.settings.clone())
+    })
 }
 
 /// Most recent log entries (already redacted), newest last.
@@ -347,8 +432,8 @@ pub async fn export_diagnostics() -> ApiResult<DiagnosticsExport> {
 /// stop any core. Safe to call at any time.
 #[tauri::command]
 #[specta::specta]
-pub async fn restore_networking() -> ApiResult<RestoreReport> {
-    Err(AppError::not_implemented("restore_networking"))
+pub async fn restore_networking(app: AppHandle) -> ApiResult<RestoreReport> {
+    ops::restore_networking(&app).await
 }
 
 #[tauri::command]
@@ -369,13 +454,11 @@ pub async fn get_app_info() -> ApiResult<AppInfo> {
     })
 }
 
-/// Disconnect, restore networking, then exit. In B1 there is no OS state to
-/// restore, so this exits immediately.
+/// Disconnect, restore networking, then exit.
 #[tauri::command]
 #[specta::specta]
 pub async fn quit_app(app: AppHandle) -> ApiResult<()> {
-    app.exit(0);
-    Ok(())
+    ops::quit(&app).await
 }
 
 // ---------------------------------------------------------------------------

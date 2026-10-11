@@ -9,7 +9,7 @@ pub mod types;
 use tauri_specta::{collect_commands, collect_events, Builder};
 
 /// Must equal the version at the top of `docs/SPEC.md` (checked by a test).
-pub const SPEC_VERSION: &str = "0.3.0";
+pub const SPEC_VERSION: &str = "1.0.0";
 
 /// Path of the generated bindings, relative to the `src-tauri` crate root.
 pub const BINDINGS_PATH: &str = "../src/api/bindings.ts";
@@ -50,6 +50,9 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             restore_networking,
             get_app_info,
             quit_app,
+            hide_popover,
+            open_settings,
+            reveal_diagnostics,
         ])
         .events(collect_events![
             events::StatusChanged,
@@ -63,6 +66,8 @@ pub fn specta_builder() -> Builder<tauri::Wry> {
             events::RecoveryCompleted,
             events::RestoreReportChanged,
             events::ErrorRaised,
+            events::SettingsSectionRequested,
+            events::PopoverShown,
         ])
         .typ::<error::ErrorCode>()
         .constant("SPEC_VERSION", SPEC_VERSION)

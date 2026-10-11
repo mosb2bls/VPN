@@ -280,19 +280,6 @@ pub struct RecoveryReport {
     pub at: String,
     /// The restore that recovery ran; `None` when the session was re-attached. (REQ-4)
     pub restore: Option<RestoreReport>,
-    /// DEPRECATED since SPEC 0.3.0 — mirror of `restore.items`; removed in the next
-    /// major version. Use `restore`.
-    pub actions: Vec<RestoreAction>,
-}
-
-/// DEPRECATED since SPEC 0.3.0 — use [`RestoreItem`].
-#[derive(Serialize, Deserialize, Type, Debug, Clone, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct RestoreAction {
-    /// Human-readable item, e.g. "System proxy (Wi-Fi)", "pf kill switch".
-    pub item: String,
-    pub ok: bool,
-    pub message: Option<String>,
 }
 
 /// Per-item restore report (REQ-4). Produced identically by `disconnect`,
@@ -307,23 +294,11 @@ pub struct RestoreReport {
     /// Exactly one entry per `RestoreItemKind`, in execution order:
     /// tun_session, routes, dns, ipv6, system_proxy, firewall.
     pub items: Vec<RestoreItem>,
-    /// DEPRECATED since SPEC 0.3.0 — mirror of `items`; removed in the next major
-    /// version. Use `items`.
-    pub actions: Vec<RestoreAction>,
 }
 
 impl From<edge_core::restore::CoreRestoreReport> for RestoreReport {
     fn from(r: edge_core::restore::CoreRestoreReport) -> Self {
-        let actions = r
-            .items
-            .iter()
-            .map(|i| RestoreAction {
-                item: i.label.clone(),
-                ok: i.result.is_clean(),
-                message: i.error_message.clone().or_else(|| Some(i.action.clone())),
-            })
-            .collect();
-        Self { at: r.at, trigger: r.trigger, fully_restored: r.fully_restored, items: r.items, actions }
+        Self { at: r.at, trigger: r.trigger, fully_restored: r.fully_restored, items: r.items }
     }
 }
 
@@ -408,6 +383,25 @@ pub struct HelperStatus {
     pub version: Option<String>,
     pub expected_version: String,
     pub needs_upgrade: bool,
+}
+
+// ---------------------------------------------------------------------------
+// Windows (REQ-1)
+// ---------------------------------------------------------------------------
+
+/// Section of the settings window. (REQ-1)
+#[derive(Serialize, Deserialize, Type, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SettingsSection {
+    Nodes,
+    Connection,
+    Failover,
+    Safety,
+    Rules,
+    Helper,
+    Startup,
+    Logs,
+    About,
 }
 
 // ---------------------------------------------------------------------------
@@ -513,7 +507,7 @@ mod tests {
     }
 
     /// REQ-4: a partial failure surfaces as RESTORE_INCOMPLETE with the full
-    /// per-item report attached, and the deprecated `actions` mirror agrees.
+    /// per-item report attached.
     #[test]
     fn restore_incomplete_error_carries_per_item_report() {
         use edge_core::restore::{run_restore, Restorer, StepOutcome};
@@ -543,7 +537,6 @@ mod tests {
         assert_eq!(r["items"][2]["kind"], "dns");
         assert_eq!(r["items"][2]["result"], "failed");
         assert_eq!(r["items"][2]["errorCode"], "DNS_RESTORE_FAILED");
-        assert_eq!(r["actions"][2]["ok"], false);
-        assert_eq!(r["actions"][0]["ok"], true);
+        assert!(r.get("actions").is_none());
     }
 }

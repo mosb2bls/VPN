@@ -1,7 +1,7 @@
 # EdgeClient — Backend ↔ UI Interface Specification
 
-**Spec version:** 0.3.0
-**Status:** approved baseline 0.1.0 + REQ-2/REQ-3/REQ-4 (Phase B1)
+**Spec version:** 1.0.0
+**Status:** approved; includes REQ-1 to REQ-4 (Phase B1). "1.0.0" marks a breaking change, not feature completeness — most commands are still stubs.
 **Generated bindings:** `src/api/bindings.ts` (from `src-tauri/src/api/*`, via tauri-specta `=2.0.0-rc.25`)
 
 The Rust types in `src-tauri/src/api/` are the source of truth; this document explains
@@ -12,6 +12,7 @@ the disagreement is a backend bug — file a REQ.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.0.0 | 2026-10-11 | **Breaking (owner-approved):** removed deprecated `RestoreReport.actions`, `RecoveryReport.actions` and type `RestoreAction` — use `items` / `restore`. **Additive (REQ-1):** windows `popover` + `settings` and tray (§2.8); commands `hide_popover`, `open_settings(section)`, `reveal_diagnostics`; type `SettingsSection`; events `settingsSectionRequested`, `popoverShown`; codes `DIAGNOSTICS_NOT_FOUND`, `WINDOW_UNAVAILABLE`. |
 | 0.3.0 | 2026-10-11 | **Additive (REQ-4, owner decision):** per-item restore reporting (§2.7). New: `RestoreItem`, `RestoreItemKind`, `RestoreResult`, `RestoreTrigger`; `RestoreReport.{at, trigger, items}`; `RecoveryReport.restore`; `AppError.restoreReport`; `Status.{tunActive, lastRestore}`; event `restoreReportChanged`; codes `TUN_STOP_FAILED`, `ROUTE_RESTORE_FAILED`, `DNS_RESTORE_FAILED`, `IPV6_RESTORE_FAILED`. **Clarified:** partial restore failure is always the error `RESTORE_INCOMPLETE` (never `ok`), for `disconnect` and `restore_networking` alike. **Deprecated:** `RestoreReport.actions`, `RecoveryReport.actions`, type `RestoreAction` (mirrors; removed in the next major). |
 | 0.2.0 | 2026-10-11 | **Additive (REQ-2):** `TrafficStats.latencyMs`. **Clarifications (REQ-3):** concurrent `test_node` (§2.1), `nodesChanged` after a test (§2.1), connect preconditions leave state unchanged (§2.2), progress text in `statusChanged.reason` (§2.2), `get_logs` polling (§2.6). |
 | 0.1.0 | 2026-10-11 | Initial contract: 32 commands, 10 events, state machine, error codes, Notes for UI. All network/OS commands are stubs (`NOT_IMPLEMENTED`). |
@@ -229,6 +230,59 @@ restore completes fully; a complete report is not persisted (after a restart
 - `quit_app` with an incomplete restore still exits; the journal and report are kept and
   the next launch (or the helper, for its items) retries in `recovering`.
 
+### 2.8 Windows and tray (REQ-1)
+
+| Command | Params | Returns | Errors | Elevation | B1 |
+|---|---|---|---|---|---|
+| `hide_popover` | — | `null` | `WINDOW_UNAVAILABLE` | no | **real** |
+| `open_settings` | `section: SettingsSection \| null` | `null` | `WINDOW_UNAVAILABLE` | no | **real** |
+| `reveal_diagnostics` | — | `null` | `DIAGNOSTICS_NOT_FOUND` | no | **real** (always `DIAGNOSTICS_NOT_FOUND` until `export_diagnostics` exists) |
+
+`SettingsSection` = `"nodes" | "connection" | "failover" | "safety" | "rules" | "helper" |
+"startup" | "logs" | "about"`.
+
+**Windows.** Both are created at launch (hidden), load the same frontend entry `/`, and are
+**never destroyed** — closing hides them — so their event listeners stay attached. The UI
+routes on the window label.
+
+| Label | Size | Behaviour |
+|---|---|---|
+| `popover` | 340 × 480 logical, fixed | Frameless, **opaque with the native OS shadow** (owner decision), not resizable, always on top, not in the taskbar, visible on all macOS Spaces, first click accepted. Tray icon **left-click toggles** it; it is placed next to the tray icon (below the macOS menu bar; next to the Windows taskbar on whichever edge, on the icon's monitor) and kept fully inside the monitor's work area. **Hides on blur** (losing focus); a tray click within 300 ms of a blur-hide counts as "close", not "reopen". Esc → the UI calls `hide_popover`. File drag-and-drop disabled. |
+| `settings` | 760 × 560, min 640 × 480, resizable | Normal decorations, title "EdgeClient Settings", centred. Close button hides it; the app keeps running in the tray. File drag-and-drop **enabled** (QR image drop → `import_qr_image({kind:"path"})`). |
+
+macOS: the app is a menu-bar (accessory) app — **no Dock icon**; the settings window still
+focuses normally.
+
+**`open_settings(section)`** hides the popover, shows, un-minimises and focuses
+`settings`, and — if `section` is not null — emits `settingsSectionRequested { section }`
+**to the `settings` window only**. **`popoverShown`** (payload `null`) is emitted **to the
+`popover` window only** each time it is shown from the tray.
+
+**`reveal_diagnostics`** reveals only the most recent `export_diagnostics` zip in
+Finder / Explorer; there is no command that reveals arbitrary paths.
+
+**Capabilities.** Each window has its own capability file
+(`src-tauri/capabilities/{popover,settings}.json`), both `core:default` only. The opener
+plugin is **not** exposed to the webviews (reveal goes through `reveal_diagnostics`);
+request more permissions via REQUESTS.md.
+
+**Tray menu** — opened by **right-click** on the tray icon (macOS: right-click or
+Ctrl-click; left-click toggles the popover — macOS right-click behaviour **untested**).
+Rebuilt on every status / node change:
+
+1. `EdgeClient — <state>` (disabled header)
+2. Connect / Disconnect (label follows state)
+3. Node: `<active or selected>` ▸ node list (check = selected)
+4. Routing mode ▸ Rule / Global / Direct
+5. Capture mode ▸ System proxy / TUN (whole device)
+6. Restore networking
+7. Settings… (= `open_settings(null)`)
+8. Quit EdgeClient
+
+Tray actions run the same backend operations as the commands. A tray action that fails
+emits `errorRaised` (so the UI can show it); state changes arrive as the usual
+`statusChanged` / `nodesChanged` events.
+
 ## 3. Events (backend → UI)
 
 Listen with `events.<name>.listen(cb)`; payload in `event.payload`. Wire names are
@@ -245,6 +299,8 @@ kebab-case (`status-changed`).
 | `helperStatusChanged` | `{ status: HelperStatus }` | Helper installed/uninstalled/started/stopped/unreachable. |
 | `nodesChanged` | `{ nodes: Node[], selectedNodeId }` | Node list or selection changed by any source (UI, tray, import). |
 | `recoveryCompleted` | `{ report: RecoveryReport }` | Launch-time or helper-start recovery finished. Also stored in `Status.lastRecovery`. |
+| `settingsSectionRequested` | `{ section: SettingsSection }` | **To `settings` only.** `open_settings(section)` or tray (REQ-1). |
+| `popoverShown` | `null` | **To `popover` only.** Each time the popover is shown from the tray (REQ-1). |
 | `restoreReportChanged` | `{ report: RestoreReport }` | `Status.lastRestore` changed: any restore finished, or an incomplete report was reloaded at launch (REQ-4, §2.7). |
 | `errorRaised` | `{ error: AppError }` | Background error not tied to a command. `recoverable: false` → user action needed. |
 
@@ -394,10 +450,9 @@ All types are defined in `bindings.ts`; key semantics:
   on the active node, or `null` if there has been no round yet or the last round failed
   (REQ-2). It is updated at the probe interval (default 10 s), not every second.
 - **`NodeTestResult`** — `ok`, `latencyMs`, `exitCountry` (ISO 3166-1 alpha-2), `error`.
-- **`RestoreReport`** — `{ at, trigger, fullyRestored, items: RestoreItem[6], actions }`
-  (§2.7; `actions` deprecated). **`RecoveryReport`** — `{ outcome: reattached | restored |
-  restore_incomplete, at, restore: RestoreReport | null, actions }` (`restore` is null
-  when re-attached; `actions` deprecated).
+- **`RestoreReport`** — `{ at, trigger, fullyRestored, items: RestoreItem[6] }` (§2.7).
+  **`RecoveryReport`** — `{ outcome: reattached | restored | restore_incomplete, at,
+  restore: RestoreReport | null }` (`restore` is null when re-attached).
 - **`RulesStatus`**, **`HelperStatus`**, **`AppSettings`**, **`LogEntry`**, **`AppInfo`**.
 - **`AppError`** — `{ code, message, recoverable, fields, detail, restoreReport }`. Show
   `message` directly. `detail` is redacted technical text for a "details" disclosure /
@@ -419,7 +474,7 @@ patch). Full list, with default messages, in `src-tauri/src/api/error.rs`
 | Helper / TUN | `HELPER_NOT_INSTALLED`, `HELPER_INSTALL_CANCELLED`, `HELPER_INSTALL_FAILED`, `HELPER_UNINSTALL_FAILED`, `HELPER_UNREACHABLE`, `HELPER_VERSION_MISMATCH`, `HELPER_AUTH_FAILED`, `TUN_START_FAILED`, `KILL_SWITCH_FAILED`, `KILL_SWITCH_REMOVE_FAILED` |
 | Recovery | `TUN_STOP_FAILED`, `ROUTE_RESTORE_FAILED`, `DNS_RESTORE_FAILED`, `IPV6_RESTORE_FAILED`, `JOURNAL_CORRUPT`, `RESTORE_INCOMPLETE` (item-level codes appear in `RestoreItem.errorCode`; `SYSTEM_PROXY_RESTORE_FAILED`, `KILL_SWITCH_REMOVE_FAILED`, `HELPER_UNREACHABLE` are also used there) |
 | Rules | `RULES_DOWNLOAD_FAILED`, `RULES_VALIDATION_FAILED`, `RULES_UPDATE_IN_PROGRESS` |
-| App | `SETTINGS_INVALID`, `SETTINGS_SAVE_FAILED`, `LAUNCH_AT_LOGIN_FAILED`, `DIAGNOSTICS_EXPORT_FAILED` |
+| App | `SETTINGS_INVALID`, `SETTINGS_SAVE_FAILED`, `LAUNCH_AT_LOGIN_FAILED`, `DIAGNOSTICS_EXPORT_FAILED`, `DIAGNOSTICS_NOT_FOUND`, `WINDOW_UNAVAILABLE` |
 
 `ErrorCode` is a closed string union in TS; the UI should still render unknown codes
 gracefully using `message`.

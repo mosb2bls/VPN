@@ -125,6 +125,8 @@ error_codes! {
     SettingsSaveFailed => "Settings could not be saved.",
     LaunchAtLoginFailed => "Launch at login could not be changed.",
     DiagnosticsExportFailed => "Diagnostics could not be exported.",
+    DiagnosticsNotFound => "No diagnostics export found. Export diagnostics first.",
+    WindowUnavailable => "The app window could not be shown.",
 }
 
 #[cfg(test)]
