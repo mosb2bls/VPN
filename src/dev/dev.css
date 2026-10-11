@@ -15,15 +15,15 @@ body { margin: 0; background: var(--d-bg); }
 .dev-tabs { position: fixed; top: 8px; right: 12px; z-index: 10; display: flex; gap: 2px; font: 10px/1 var(--d-mono); letter-spacing: 0.14em; text-transform: uppercase; }
 .dev-tabs a { color: var(--d-ink); text-decoration: none; padding: 5px 8px; border: 1px solid var(--d-ink); background: var(--d-win); }
 .dev-tabs a[aria-current="true"] { background: var(--d-ink); color: var(--d-win); }
-.dev-page :is(button, select, input, textarea) { font: inherit; color: inherit; }
-.dev-page select, .dev-page textarea, .dev-page input { border: 1px solid var(--d-line); background: var(--d-win); }
-.dev-page button {
+:is(.dev-panel, .dbg, .dev-header, figcaption) :is(button, select, input, textarea) { font: inherit; color: inherit; }
+:is(.dev-panel, .dbg, .dev-header, figcaption) :is(select, textarea, input) { border: 1px solid var(--d-line); background: var(--d-win); }
+:is(.dev-panel, .dbg, .dev-header, figcaption) button {
   background: var(--d-win); border: 1px solid var(--d-line); border-radius: 2px;
   padding: 3px 8px; cursor: pointer;
 }
-.dev-page button:hover { border-color: var(--d-ink); }
-.dev-page button[aria-pressed="true"] { background: var(--d-ink); color: var(--d-win); border-color: var(--d-ink); }
-.dev-page button:disabled { opacity: 0.5; cursor: default; }
+:is(.dev-panel, .dbg, .dev-header, figcaption) button:hover { border-color: var(--d-ink); }
+:is(.dev-panel, .dbg, .dev-header, figcaption) button[aria-pressed="true"] { background: var(--d-ink); color: var(--d-win); border-color: var(--d-ink); }
+:is(.dev-panel, .dbg, .dev-header, figcaption) button:disabled { opacity: 0.5; cursor: default; }
 
 .dev-page { padding: 16px; display: flex; flex-direction: column; gap: 16px; min-width: 1150px; }
 .dev-header { display: flex; gap: 16px; font: 11px/1 var(--d-mono); letter-spacing: 0.12em; color: var(--d-mute); }
@@ -109,3 +109,4 @@ body { margin: 0; background: var(--d-bg); }
 .dbg-activity { list-style: none; margin: 0; padding: 0; font: 11px/1.5 var(--d-mono); }
 .dbg-activity li[data-tone="warn"] { color: var(--d-warn); }
 .dbg-activity li[data-tone="error"] { color: var(--d-err); }
+figcaption .dev-link { border: none; background: none; padding: 0; font: inherit; letter-spacing: inherit; text-decoration: underline; cursor: pointer; color: var(--d-mute); }

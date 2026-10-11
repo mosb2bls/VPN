@@ -138,6 +138,28 @@ geometry: frame 288 × 408 px, module 24 (12 × 17), 26 px side margins (D10).
 | stagger | 35 ms per item, max 6 |
 | spring | bounce 0 only |
 
+### Popover layout (U2.1 — proposed)
+
+340 × 480 window; frame 288 × 408 = 12 × 17 rows of 24 px; content inset 12 px.
+Corner labels: `EDGECLIENT` · `01 / STATUS` · `<HY2|REALITY> · <UDP|TCP> <port>` · session
+time (muted `00:00:00` when not connected).
+
+| Rows | Block |
+|---|---|
+| 1–2 | Status instrument: `HY2` tick at column 8, `REALITY` tick at column 11; dot hangs from the active/selected node's tick |
+| 3–5 | State word (30 px, 850, 82 %) + one line: progress text / consequence |
+| 6–7 | Node: name, last latency, protocol badge, chevron (opens switcher, U2.3) |
+| 8–9 | Primary action, 40 px ink button |
+| 10 | Routing: RULE / GLOBAL / DIRECT |
+| 11 | Capture: SYSTEM PROXY / TUN |
+| 12–13 | Coverage note (system proxy: required copy; TUN: whole device + kill switch) |
+| 14–15 | Up / Down / Latency (18 px tabular; `—` when idle) |
+| 16 | Last event (failover reason or error; click for details) |
+| 17 | Footer: SETTINGS · RESTORE NETWORKING · QUIT |
+
+State → view mapping lives in `src/popover/view.ts` (priority BLOCKED > NOT RESTORED >
+state; HELPER MISSING replaces OFF in TUN without helper).
+
 ## 4. Dependencies
 
 | Package | Version | Why |

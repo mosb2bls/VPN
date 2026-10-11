@@ -29,14 +29,11 @@ Each agent edits only its own section.
 
 ## UI
 
-- **Phase/step:** U1.2 — design tokens, fonts, frame/grid, token sheet (awaiting owner review)
-- **SPEC version:** 0.3.0 (REQ-4 restore reports implemented in mock, store and debug views)
+- **Phase/step:** U2.1 — popover static layout, OFF state (awaiting owner review)
+- **SPEC version:** 1.0.0 (window commands/events real; no PENDING flags)
 - **Real / stubbed:** `src/api/client.ts` wraps `bindings.ts` (real inside Tauri, mock in a
-  browser; `VITE_USE_MOCK` overrides). `src/api/mock.ts` simulates every SPEC command,
-  event and error code, including per-item restore failures. Screens are temporary debug
-  views (`src/dev/`); designed popover/settings come in U2/U3. Inside Tauri the `main`
-  window shows the dev page until REQ-1 adds `popover` / `settings`.
-- **Pending flags:** `// PENDING REQ-1` (window commands/events) — mock-only; real build
-  returns `NOT_IMPLEMENTED`.
-- **Open requests:** REQ-1 (accepted, backend B1.3 → SPEC v0.4.0).
-- **Known issues:** none.
+  browser; `VITE_USE_MOCK` overrides). Mock simulates every SPEC command, event and error
+  code. The `popover` window renders the designed popover (`src/popover/`); the `settings`
+  window still renders the U1.1 debug view until U3.
+- **Open requests:** none.
+- **Known issues:** popover states other than OFF use provisional styling until U2.2.

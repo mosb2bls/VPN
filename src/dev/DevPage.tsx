@@ -6,6 +6,7 @@ import { USE_MOCK } from "../api/client";
 import { mockEngine } from "../api/mock";
 import { useApp } from "../state/store";
 import { DevPanel } from "./DevPanel";
+import { Popover } from "../popover/Popover";
 import { PopoverDebug } from "./PopoverDebug";
 import { SettingsDebug } from "./SettingsDebug";
 import { TokenSheet } from "./TokenSheet";
@@ -38,6 +39,7 @@ export function DevPage() {
 
 function Windows() {
   const [quit, setQuit] = useState(false);
+  const [debug, setDebug] = useState(false);
   const bootError = useApp((s) => s.bootError);
   useEffect(() => {
     mockEngine.onQuit = () => setQuit(true);
@@ -57,14 +59,21 @@ function Windows() {
       </header>
       <div className="dev-windows">
         <figure>
-          <figcaption>POPOVER · 340 × 480</figcaption>
+          <figcaption>
+            POPOVER · 340 × 480 ·{" "}
+            <button className="dev-link" onClick={() => setDebug((d) => !d)}>
+              {debug ? "show designed" : "show debug view"}
+            </button>
+          </figcaption>
           <div className="dev-window" style={{ width: 340, height: 480 }}>
             {quit ? (
               <div className="dbg-pad">
                 App quit (mock). <button onClick={() => location.reload()}>Relaunch</button>
               </div>
-            ) : (
+            ) : debug ? (
               <PopoverDebug />
+            ) : (
+              <Popover />
             )}
           </div>
         </figure>
