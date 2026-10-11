@@ -76,7 +76,7 @@ export const events = {
 };
 
 /* Constants */
-export const SPEC_VERSION = "0.1.0" as const;
+export const SPEC_VERSION = "0.2.0" as const;
 
 /* Types */
 /**  The node carrying traffic changed. */
@@ -453,6 +453,11 @@ export type TrafficStats = {
 	upBytesTotal: number | null,
 	downBytesTotal: number | null,
 	activeConnections: number,
+	/**
+	 *  Median probe latency of the most recent *passing* health round on the
+	 *  active node; `None` if no round yet or the last round failed. (REQ-2)
+	 */
+	latencyMs: number | null,
 };
 
 /**  Roughly once per second while connected. */

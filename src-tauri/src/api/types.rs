@@ -249,6 +249,9 @@ pub struct TrafficStats {
     pub up_bytes_total: f64,
     pub down_bytes_total: f64,
     pub active_connections: u32,
+    /// Median probe latency of the most recent *passing* health round on the
+    /// active node; `None` if no round yet or the last round failed. (REQ-2)
+    pub latency_ms: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Type, Debug, Clone, Copy, PartialEq, Eq)]

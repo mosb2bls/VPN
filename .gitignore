@@ -64,5 +64,8 @@ npm-debug.log*
 *.sw?
 *.local
 
+# UI design reference originals (full-size images stay local only)
+/design/reference/originals/
+
 # Claude Code: shared settings.json is committed, personal overrides are not
 .claude/settings.local.json

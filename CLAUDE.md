@@ -22,6 +22,7 @@ They never edit each other's files and collaborate only through the files below.
 | `src/api/bindings.ts` (generated TS types/commands) | Backend (generated; UI must not hand-edit) |
 | `docs/UI.md` | UI |
 | `package.json` frontend dependencies, `vite.config.ts`, `index.html`, `tsconfig*.json`, `public/`, frontend lint/format config | UI |
+| `design/`, `components.json` | UI |
 | `src-tauri/`, `crates/`, `resources/`, `scripts/`, `tests/`, `.github/` | Backend |
 | `package.json` `scripts` section, `tauri.conf.json`, `Cargo.*` | Backend |
 | `docs/SPEC.md`, `docs/TESTING.md`, `docs/adr/` | Backend |

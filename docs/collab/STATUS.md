@@ -4,8 +4,8 @@ Each agent edits only its own section.
 
 ## Backend
 
-- **Phase/step:** B1 — Interface contract (awaiting owner approval of SPEC v0.1.0)
-- **SPEC version:** 0.1.0 (`docs/SPEC.md`, `src/api/bindings.ts`)
+- **Phase/step:** B1.1 — UI requests processed (REQ-2 done, REQ-3 answered). Next: B1.2 = REQ-1 (popover/settings windows, tray), then Phase B2.
+- **SPEC version:** 0.2.0 (`docs/SPEC.md`, `src/api/bindings.ts`)
 - **Real:** `get_app_info`; input validation in `set_failover_settings` and `set_settings`;
   in-memory `delete_node` / `reorder_nodes` / `select_node` and mode setters (emit
   `nodesChanged` / `statusChanged`); `quit_app` (exits — no OS state exists yet).
@@ -15,6 +15,7 @@ Each agent edits only its own section.
 - **Stubbed (`NOT_IMPLEMENTED`):** import (links/clipboard/QR), add/update node, `test_node`,
   `connect`, `update_rules_now`, install/uninstall helper, `export_diagnostics`,
   `restore_networking`. `--restore-networking` CLI flag not yet implemented.
+- `TrafficStats.latencyMs` exists in the contract; no stats are emitted yet.
 - **No events are emitted** except `nodesChanged` / `statusChanged` from the in-memory setters.
 - **Known issues:** none.
 

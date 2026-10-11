@@ -1,7 +1,7 @@
 # EdgeClient — Backend ↔ UI Interface Specification
 
-**Spec version:** 0.1.0
-**Status:** draft for owner approval (Phase B1)
+**Spec version:** 0.2.0
+**Status:** approved baseline 0.1.0 + REQ-2/REQ-3 (Phase B1)
 **Generated bindings:** `src/api/bindings.ts` (from `src-tauri/src/api/*`, via tauri-specta `=2.0.0-rc.25`)
 
 The Rust types in `src-tauri/src/api/` are the source of truth; this document explains
@@ -12,6 +12,7 @@ the disagreement is a backend bug — file a REQ.
 
 | Version | Date | Change |
 |---|---|---|
+| 0.2.0 | 2026-10-11 | **Additive (REQ-2):** `TrafficStats.latencyMs`. **Clarifications (REQ-3):** concurrent `test_node` (§2.1), `nodesChanged` after a test (§2.1), connect preconditions leave state unchanged (§2.2), progress text in `statusChanged.reason` (§2.2), `get_logs` polling (§2.6). |
 | 0.1.0 | 2026-10-11 | Initial contract: 32 commands, 10 events, state machine, error codes, Notes for UI. All network/OS commands are stubs (`NOT_IMPLEMENTED`). |
 
 Versioning: **major** = breaking (owner approval first), **minor** = additive, **patch** =
@@ -80,6 +81,13 @@ clarification/wording. Each interface change updates this file, the changelog, a
 - **test_node** is a real end-to-end test: HTTP probes through the node to the failover
   probe targets, plus an exit-country lookup. It works whether or not connected and never
   changes the system's networking. Typically 1–10 s.
+- **Concurrent tests** (REQ-3): the UI may call `test_node` for several nodes at once
+  ("Test all"). The backend runs at most 3 tests in parallel and queues the rest, so calls
+  may take longer but never fail for that reason. A second call for a node that is
+  **already being tested** fails with `BUSY` (recoverable).
+- **After a test** (REQ-3): the backend stores the result as that node's `lastTest` and
+  emits `nodesChanged` with the updated list. The returned `NodeTestResult` is the same
+  data; the UI may patch locally or wait for the event.
 
 ### 2.2 Connection
 
@@ -94,6 +102,17 @@ clarification/wording. Each interface change updates this file, the changelog, a
 
 - `connect` returns once the state is `connected` (or `direct`), or fails. Progress is
   visible through `statusChanged` events (`connecting` first).
+- **Preconditions** (REQ-3): `connect` checks these **before** leaving `disconnected`; if
+  one fails it returns the error and the **state stays unchanged** (no `statusChanged`):
+  `NO_NODES`, `NO_NODE_SELECTED`, `BUSY`, and in TUN mode `HELPER_NOT_INSTALLED`,
+  `HELPER_VERSION_MISMATCH`, `HELPER_UNREACHABLE`. Only failures *after* `connecting` has
+  started lead to state `error`. So the UI can show "helper missing" from
+  `getHelperStatus()` + `captureMode = tun` before any connect attempt.
+- **Progress text** (REQ-3): during `connecting`, `reconnecting`, `disconnecting`,
+  `failing_over` and `recovering`, each step emits `statusChanged` with a short
+  display-ready `reason`, e.g. "Starting proxy core", "Setting system proxy",
+  "Starting TUN", "Running health check", "Restoring network settings". The text is for
+  display only — it is not a stable identifier; never parse it.
 - Mode changes while disconnected just store the preference. While connected:
   - **capture mode:** fully tears down the old mode (restores OS state) before starting the
     new one; transient states `disconnecting` → `connecting` → `connected`.
@@ -151,6 +170,9 @@ attempt, scheduled or manual, is also emitted as `rulesUpdated`.
 | `get_app_info` | — | `AppInfo` | — | no | **real** |
 | `quit_app` | — | `null` (process exits) | `RESTORE_INCOMPLETE` (app still quits) | no | exits immediately |
 
+- `get_logs` (REQ-3): polling every ~2 s while a logs view is visible is fine (the
+  backend keeps a 2000-entry in-memory ring buffer; `limit` is capped at 1000). There is
+  no log-stream event in this version.
 - `AppSettings` defaults: launch at login off, auto-connect off, close-to-tray on, rule
   auto-update on every 24 h, log level `info`.
 - `export_diagnostics` writes a zip to the user's Downloads folder (logs, redacted config,
@@ -172,7 +194,7 @@ kebab-case (`status-changed`).
 | `statusChanged` | `{ status: Status, reason: string \| null }` | Any state or mode change. Always carries the full `Status`. |
 | `activeNodeChanged` | `{ previousNodeId, nodeId, cause: "manual" \| "failover" \| "failback" \| "restore" }` | The node carrying traffic changed. |
 | `failoverEvent` | `{ kind: "switched_to_fallback" \| "returned_to_primary" \| "suppressed", fromNodeId, toNodeId, reason, at }` | Every automatic failover decision. `reason` is display-ready. |
-| `trafficStatsUpdated` | `{ stats: TrafficStats }` | ~1 Hz while connected. |
+| `trafficStatsUpdated` | `{ stats: TrafficStats }` | ~1 Hz while connected. Includes `latencyMs` (REQ-2). |
 | `healthCheck` | `{ nodeId, roundOk, probes: ProbeResult[], consecutiveFailedRounds, at }` | Each probe round on the active node (default every 10 s). |
 | `rulesUpdated` | `{ ok, changed, status: RulesStatus }` | After every rule update attempt. |
 | `helperStatusChanged` | `{ status: HelperStatus }` | Helper installed/uninstalled/started/stopped/unreachable. |
@@ -317,7 +339,10 @@ All types are defined in `bindings.ts`; key semantics:
 - **`Status`** — see §4. `selectedNodeId` = user choice; `activeNodeId` = node carrying
   traffic (null when not proxying); `failover` non-null while on the fallback;
   `killSwitchActive`, `systemProxySet` report actual OS state held by the app.
-- **`TrafficStats`** — bytes/s and totals since connect (numbers), active connection count.
+- **`TrafficStats`** — bytes/s and totals since connect (numbers), active connection
+  count, and `latencyMs`: median probe latency of the most recent **passing** health round
+  on the active node, or `null` if there has been no round yet or the last round failed
+  (REQ-2). It is updated at the probe interval (default 10 s), not every second.
 - **`NodeTestResult`** — `ok`, `latencyMs`, `exitCountry` (ISO 3166-1 alpha-2), `error`.
 - **`RulesStatus`**, **`HelperStatus`**, **`AppSettings`**, **`LogEntry`**, **`AppInfo`**,
   **`RestoreReport`** / **`RecoveryReport`** (`outcome: reattached | restored |
