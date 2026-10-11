@@ -3,10 +3,8 @@
 //!
 //! Logic shared with the tray menu lives in [`ops`]; commands are thin wrappers.
 //!
-//! PHASE B1: commands that would touch the network, OS state, keychain or
-//! disk return `NOT_IMPLEMENTED`. Getters return placeholder data from
-//! `crate::stub`; simple setters update in-memory state only (not persisted,
-//! not applied to the OS).
+//! Nodes and preferences are real and persisted (B2.2). Commands that touch
+//! the network or OS state still return `NOT_IMPLEMENTED`.
 
 use std::sync::Mutex;
 
@@ -17,13 +15,13 @@ use super::error::{ApiResult, AppError, ErrorCode, FieldError};
 use super::events::{NodesChanged, StatusChanged};
 use super::types::*;
 use crate::shell;
-use crate::stub::StubState;
+use crate::state::AppData;
 
-pub type AppState = Mutex<StubState>;
+pub type AppState = Mutex<AppData>;
 
 /// Run `f` with the state locked. The lock is released before returning, so
 /// callers can emit events / refresh the tray afterwards without deadlocking.
-fn with_state<T>(app: &AppHandle, f: impl FnOnce(&mut StubState) -> ApiResult<T>) -> ApiResult<T> {
+fn with_state<T>(app: &AppHandle, f: impl FnOnce(&mut AppData) -> ApiResult<T>) -> ApiResult<T> {
     let state = app.state::<AppState>();
     let mut guard = state
         .lock()
@@ -32,8 +30,7 @@ fn with_state<T>(app: &AppHandle, f: impl FnOnce(&mut StubState) -> ApiResult<T>
 }
 
 fn notify_nodes(app: &AppHandle) {
-    if let Ok((nodes, selected_node_id)) =
-        with_state(app, |st| Ok((st.nodes.clone(), st.selected_node_id.clone())))
+    if let Ok((nodes, selected_node_id)) = with_state(app, |st| Ok((st.nodes.list(), st.nodes.selected_id())))
     {
         let _ = NodesChanged { nodes, selected_node_id }.emit(app);
     }
@@ -53,10 +50,7 @@ pub mod ops {
 
     pub fn select_node(app: &AppHandle, id: String) -> ApiResult<Status> {
         let status = with_state(app, |st| {
-            if !st.nodes.iter().any(|n| n.id == id) {
-                return Err(AppError::new(ErrorCode::NodeNotFound));
-            }
-            st.selected_node_id = Some(id.clone());
+            st.nodes.select(&id)?;
             st.status.selected_node_id = Some(id);
             Ok(st.status.clone())
         })?;
@@ -67,6 +61,7 @@ pub mod ops {
 
     pub fn set_capture_mode(app: &AppHandle, mode: CaptureMode) -> ApiResult<Status> {
         let status = with_state(app, |st| {
+            st.prefs.update(|p| p.capture_mode = mode)?;
             st.status.capture_mode = mode;
             Ok(st.status.clone())
         })?;
@@ -76,6 +71,7 @@ pub mod ops {
 
     pub fn set_routing_mode(app: &AppHandle, mode: RoutingMode) -> ApiResult<Status> {
         let status = with_state(app, |st| {
+            st.prefs.update(|p| p.routing_mode = mode)?;
             st.status.routing_mode = mode;
             Ok(st.status.clone())
         })?;
@@ -85,6 +81,7 @@ pub mod ops {
 
     pub fn set_dns_profile(app: &AppHandle, profile: DnsProfile) -> ApiResult<Status> {
         let status = with_state(app, |st| {
+            st.prefs.update(|p| p.dns_profile = profile)?;
             st.status.dns_profile = profile;
             Ok(st.status.clone())
         })?;
@@ -120,22 +117,42 @@ pub mod ops {
 #[tauri::command]
 #[specta::specta]
 pub async fn list_nodes(app: AppHandle) -> ApiResult<Vec<Node>> {
-    with_state(&app, |st| Ok(st.nodes.clone()))
+    with_state(&app, |st| Ok(st.nodes.list()))
+}
+
+/// Import + notify, shared by text / clipboard / QR import.
+fn import_text(app: &AppHandle, text: &str) -> ApiResult<ImportResult> {
+    let result = with_state(app, |st| {
+        let r = st.nodes.import(text)?;
+        st.status.selected_node_id = st.nodes.selected_id();
+        Ok(r)
+    })?;
+    if !result.added.is_empty() {
+        notify_nodes(app);
+    }
+    Ok(result)
 }
 
 /// Parse one or more share links (one per line) and add the valid ones.
 #[tauri::command]
 #[specta::specta]
-pub async fn import_links(text: String) -> ApiResult<ImportResult> {
-    let _ = text;
-    Err(AppError::not_implemented("import_links"))
+pub async fn import_links(app: AppHandle, text: String) -> ApiResult<ImportResult> {
+    import_text(&app, &text)
 }
 
 /// Read text from the clipboard (only when the user explicitly asks) and import it.
 #[tauri::command]
 #[specta::specta]
-pub async fn import_from_clipboard() -> ApiResult<ImportResult> {
-    Err(AppError::not_implemented("import_from_clipboard"))
+pub async fn import_from_clipboard(app: AppHandle) -> ApiResult<ImportResult> {
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+    let text = app
+        .clipboard()
+        .read_text()
+        .map_err(|e| AppError::new(ErrorCode::ClipboardUnavailable).with_detail(e.to_string()))?;
+    if text.trim().is_empty() {
+        return Err(AppError::new(ErrorCode::ClipboardEmpty));
+    }
+    import_text(&app, &text)
 }
 
 #[tauri::command]
@@ -147,34 +164,39 @@ pub async fn import_qr_image(source: QrImageSource) -> ApiResult<ImportResult> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn add_node_manual(form: NodeForm) -> ApiResult<Node> {
-    let _ = form;
-    Err(AppError::not_implemented("add_node_manual"))
+pub async fn add_node_manual(app: AppHandle, form: NodeForm) -> ApiResult<Node> {
+    let node = with_state(&app, |st| {
+        let n = st.nodes.add(&form)?;
+        st.status.selected_node_id = st.nodes.selected_id();
+        Ok(n)
+    })?;
+    notify_nodes(&app);
+    Ok(node)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn update_node(id: String, form: NodeForm) -> ApiResult<Node> {
-    let _ = (id, form);
-    Err(AppError::not_implemented("update_node"))
+pub async fn update_node(app: AppHandle, id: String, form: NodeForm) -> ApiResult<Node> {
+    let node = with_state(&app, |st| st.nodes.update(&id, &form))?;
+    notify_nodes(&app);
+    Ok(node)
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn delete_node(app: AppHandle, id: String) -> ApiResult<()> {
-    with_state(&app, |st| {
-        let before = st.nodes.len();
-        st.nodes.retain(|n| n.id != id);
-        if st.nodes.len() == before {
-            return Err(AppError::new(ErrorCode::NodeNotFound));
-        }
-        if st.selected_node_id.as_deref() == Some(&id) {
-            st.selected_node_id = st.nodes.first().map(|n| n.id.clone());
-            st.status.selected_node_id = st.selected_node_id.clone();
-        }
-        Ok(())
+    let selection_changed = with_state(&app, |st| {
+        // TODO(B2.4): refuse with BUSY while this node carries traffic.
+        st.nodes.delete(&id)?;
+        let selected = st.nodes.selected_id();
+        let changed = st.status.selected_node_id != selected;
+        st.status.selected_node_id = selected;
+        Ok(changed)
     })?;
     notify_nodes(&app);
+    if selection_changed {
+        notify_status(&app, None);
+    }
     Ok(())
 }
 
@@ -182,21 +204,7 @@ pub async fn delete_node(app: AppHandle, id: String) -> ApiResult<()> {
 #[tauri::command]
 #[specta::specta]
 pub async fn reorder_nodes(app: AppHandle, ids: Vec<String>) -> ApiResult<Vec<Node>> {
-    let nodes = with_state(&app, |st| {
-        let mut current: Vec<&str> = st.nodes.iter().map(|n| n.id.as_str()).collect();
-        let mut wanted: Vec<&str> = ids.iter().map(String::as_str).collect();
-        current.sort_unstable();
-        wanted.sort_unstable();
-        if current != wanted {
-            return Err(AppError::new(ErrorCode::ReorderMismatch));
-        }
-        let reordered = ids
-            .iter()
-            .filter_map(|id| st.nodes.iter().find(|n| &n.id == id).cloned())
-            .collect();
-        st.nodes = reordered;
-        Ok(st.nodes.clone())
-    })?;
+    let nodes = with_state(&app, |st| st.nodes.reorder(&ids))?;
     notify_nodes(&app);
     Ok(nodes)
 }
@@ -264,36 +272,33 @@ pub async fn set_dns_profile(app: AppHandle, profile: DnsProfile) -> ApiResult<S
 #[tauri::command]
 #[specta::specta]
 pub async fn get_failover_settings(app: AppHandle) -> ApiResult<FailoverSettings> {
-    with_state(&app, |st| Ok(st.failover.clone()))
+    with_state(&app, |st| Ok(st.prefs.prefs.failover.clone()))
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn set_failover_settings(app: AppHandle, settings: FailoverSettings) -> ApiResult<FailoverSettings> {
     with_state(&app, |st| {
-        let node_ids: Vec<&str> = st.nodes.iter().map(|n| n.id.as_str()).collect();
+        let nodes = st.nodes.list();
+        let node_ids: Vec<&str> = nodes.iter().map(|n| n.id.as_str()).collect();
         let errors = validate_failover(&settings, &node_ids);
         if !errors.is_empty() {
             return Err(AppError::validation(errors));
         }
-        st.failover = settings;
-        Ok(st.failover.clone())
+        Ok(st.prefs.update(|p| p.failover = settings)?.failover.clone())
     })
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn get_safety_settings(app: AppHandle) -> ApiResult<SafetySettings> {
-    with_state(&app, |st| Ok(st.safety.clone()))
+    with_state(&app, |st| Ok(st.prefs.prefs.safety.clone()))
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn set_safety_settings(app: AppHandle, settings: SafetySettings) -> ApiResult<SafetySettings> {
-    with_state(&app, |st| {
-        st.safety = settings;
-        Ok(st.safety.clone())
-    })
+    with_state(&app, |st| Ok(st.prefs.update(|p| p.safety = settings)?.safety.clone()))
 }
 
 // ---------------------------------------------------------------------------
@@ -396,7 +401,7 @@ pub async fn reveal_diagnostics(app: AppHandle) -> ApiResult<()> {
 #[tauri::command]
 #[specta::specta]
 pub async fn get_settings(app: AppHandle) -> ApiResult<AppSettings> {
-    with_state(&app, |st| Ok(st.settings.clone()))
+    with_state(&app, |st| Ok(st.prefs.prefs.app.clone()))
 }
 
 #[tauri::command]
@@ -408,10 +413,8 @@ pub async fn set_settings(app: AppHandle, settings: AppSettings) -> ApiResult<Ap
             ErrorCode::FieldOutOfRange,
         )]));
     }
-    with_state(&app, |st| {
-        st.settings = settings;
-        Ok(st.settings.clone())
-    })
+    // Stored now; launch-at-login / auto-connect / close-to-tray take effect in B5.
+    with_state(&app, |st| Ok(st.prefs.update(|p| p.app = settings)?.app.clone()))
 }
 
 /// Most recent log entries (already redacted), newest last.
@@ -509,7 +512,7 @@ pub(crate) fn validate_failover(s: &FailoverSettings, node_ids: &[&str]) -> Vec<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::stub::{default_failover_settings, PLACEHOLDER_HY2_ID};
+    use crate::store::prefs::default_failover_settings;
 
     #[test]
     fn default_failover_settings_are_valid() {
@@ -532,7 +535,7 @@ mod tests {
         let mut s = default_failover_settings();
         s.probe_timeout_secs = 10;
         s.fallback_node_id = Some("missing".into());
-        let fields: Vec<_> = validate_failover(&s, &[PLACEHOLDER_HY2_ID]).into_iter().map(|f| f.field).collect();
+        let fields: Vec<_> = validate_failover(&s, &["00000000-0000-4000-8000-000000000001"]).into_iter().map(|f| f.field).collect();
         assert!(fields.contains(&"probeTimeoutSecs".to_string()));
         assert!(fields.contains(&"fallbackNodeId".to_string()));
     }

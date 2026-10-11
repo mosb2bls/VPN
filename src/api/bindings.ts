@@ -88,7 +88,7 @@ export const events = {
 };
 
 /* Constants */
-export const SPEC_VERSION = "1.0.1" as const;
+export const SPEC_VERSION = "1.1.0" as const;
 
 /* Types */
 /**  The node carrying traffic changed. */
@@ -293,6 +293,12 @@ export type Node = {
 	details: NodeDetails,
 	/**  Result of the most recent `test_node`, if any. */
 	lastTest: NodeTestResult | null,
+	/**
+	 *  True if this node's credentials are missing from / unreadable in the OS
+	 *  keychain. Connecting fails with `SECRET_MISSING`; the user must edit the
+	 *  node and re-enter them. Masked fields are empty in that case.
+	 */
+	secretMissing: boolean,
 };
 
 export type NodeChangeCause = 

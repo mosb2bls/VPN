@@ -192,7 +192,7 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let (status, nodes) = {
         let st = app.state::<AppState>();
         let g = st.lock().unwrap_or_else(|p| p.into_inner());
-        (g.status.clone(), g.nodes.clone())
+        (g.status.clone(), g.nodes.list())
     };
     let active = is_active(status.state);
     let shown_node = status.active_node_id.as_ref().or(status.selected_node_id.as_ref());

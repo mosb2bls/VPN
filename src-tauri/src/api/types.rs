@@ -38,6 +38,10 @@ pub struct Node {
     pub details: NodeDetails,
     /// Result of the most recent `test_node`, if any.
     pub last_test: Option<NodeTestResult>,
+    /// True if this node's credentials are missing from / unreadable in the OS
+    /// keychain. Connecting fails with `SECRET_MISSING`; the user must edit the
+    /// node and re-enter them. Masked fields are empty in that case.
+    pub secret_missing: bool,
 }
 
 #[derive(Serialize, Deserialize, Type, Debug, Clone)]
@@ -153,7 +157,7 @@ pub enum QrImageSource {
     Bytes { base64: String },
 }
 
-#[derive(Serialize, Deserialize, Type, Debug, Clone)]
+#[derive(Serialize, Deserialize, Type, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct NodeTestResult {
     pub node_id: String,

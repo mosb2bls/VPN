@@ -1,6 +1,6 @@
 # EdgeClient — Backend ↔ UI Interface Specification
 
-**Spec version:** 1.0.1
+**Spec version:** 1.1.0
 **Status:** approved; includes REQ-1 to REQ-4 (Phase B1). "1.0.0" marks a breaking change, not feature completeness — most commands are still stubs.
 **Generated bindings:** `src/api/bindings.ts` (from `src-tauri/src/api/*`, via tauri-specta `=2.0.0-rc.25`)
 
@@ -12,6 +12,7 @@ the disagreement is a backend bug — file a REQ.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.1.0 | 2026-10-12 | **Additive:** `Node.secretMissing`. **Behaviour (B2.2):** node commands and all preference setters are now real and persisted (§2.9); the two `[placeholder]` nodes are gone (empty list until the user imports). `import_qr_image`, connect/test and OS-level commands are still `NOT_IMPLEMENTED`. |
 | 1.0.1 | 2026-10-11 | **Clarification:** exact import rules for share links (§2.1.1): accepted parameters per scheme, rejected ones (incl. HY2 `pinSHA256` and `ech`, VLESS `pqv`, non-raw transports), IPv6 server literals rejected (IPv4-only), `type=raw` = `tcp`, `mport` / `upmbps` / `downmbps` accepted; `pinSha256` in forms must be null for now. No type changes. |
 | 1.0.0 | 2026-10-11 | **Breaking (owner-approved):** removed deprecated `RestoreReport.actions`, `RecoveryReport.actions` and type `RestoreAction` — use `items` / `restore`. **Additive (REQ-1):** windows `popover` + `settings` and tray (§2.8); commands `hide_popover`, `open_settings(section)`, `reveal_diagnostics`; type `SettingsSection`; events `settingsSectionRequested`, `popoverShown`; codes `DIAGNOSTICS_NOT_FOUND`, `WINDOW_UNAVAILABLE`. |
 | 0.3.0 | 2026-10-11 | **Additive (REQ-4, owner decision):** per-item restore reporting (§2.7). New: `RestoreItem`, `RestoreItemKind`, `RestoreResult`, `RestoreTrigger`; `RestoreReport.{at, trigger, items}`; `RecoveryReport.restore`; `AppError.restoreReport`; `Status.{tunActive, lastRestore}`; event `restoreReportChanged`; codes `TUN_STOP_FAILED`, `ROUTE_RESTORE_FAILED`, `DNS_RESTORE_FAILED`, `IPV6_RESTORE_FAILED`. **Clarified:** partial restore failure is always the error `RESTORE_INCOMPLETE` (never `ok`), for `disconnect` and `restore_networking` alike. **Deprecated:** `RestoreReport.actions`, `RecoveryReport.actions`, type `RestoreAction` (mirrors; removed in the next major). |
@@ -56,15 +57,15 @@ clarification/wording. Each interface change updates this file, the changelog, a
 
 | Command | Params | Returns | Errors | Elevation | B1 |
 |---|---|---|---|---|---|
-| `list_nodes` | — | `Node[]` (user order) | — | no | placeholder (2 nodes) |
-| `import_links` | `text: string` | `ImportResult` | `IMPORT_EMPTY` (+ per-line errors in result) | no | stub |
-| `import_from_clipboard` | — | `ImportResult` | `CLIPBOARD_EMPTY`, `CLIPBOARD_UNAVAILABLE`, `IMPORT_EMPTY` | no | stub |
-| `import_qr_image` | `source: QrImageSource` | `ImportResult` | `QR_NOT_FOUND`, `QR_IMAGE_UNREADABLE`, `QR_TOO_MANY_CODES` | no | stub |
-| `add_node_manual` | `form: NodeForm` | `Node` | `VALIDATION_FAILED` (with `fields`), `NODE_DUPLICATE`, `KEYCHAIN_*` | no | stub |
-| `update_node` | `id: string, form: NodeForm` | `Node` | `NODE_NOT_FOUND`, `VALIDATION_FAILED`, `KEYCHAIN_*` | no | stub |
-| `delete_node` | `id: string` | `null` | `NODE_NOT_FOUND`, `BUSY` (node is active) | no | memory |
-| `reorder_nodes` | `ids: string[]` (all IDs, new order) | `Node[]` | `REORDER_MISMATCH` | no | memory |
-| `select_node` | `id: string` | `Status` | `NODE_NOT_FOUND` | no | memory |
+| `list_nodes` | — | `Node[]` (user order) | — | no | **real** |
+| `import_links` | `text: string` | `ImportResult` | `IMPORT_EMPTY`, `KEYCHAIN_*`, `SETTINGS_SAVE_FAILED` (+ per-line errors in result) | no | **real** |
+| `import_from_clipboard` | — | `ImportResult` | `CLIPBOARD_EMPTY`, `CLIPBOARD_UNAVAILABLE`, `IMPORT_EMPTY`, `KEYCHAIN_*` | no | **real** |
+| `import_qr_image` | `source: QrImageSource` | `ImportResult` | `QR_NOT_FOUND`, `QR_IMAGE_UNREADABLE`, `QR_TOO_MANY_CODES` | no | stub (B2.3) |
+| `add_node_manual` | `form: NodeForm` | `Node` | `VALIDATION_FAILED` (with `fields`), `NODE_DUPLICATE`, `KEYCHAIN_*`, `SETTINGS_SAVE_FAILED` | no | **real** |
+| `update_node` | `id: string, form: NodeForm` | `Node` | `NODE_NOT_FOUND`, `VALIDATION_FAILED`, `NODE_DUPLICATE`, `KEYCHAIN_*`, `SETTINGS_SAVE_FAILED` | no | **real** |
+| `delete_node` | `id: string` | `null` | `NODE_NOT_FOUND`, `BUSY` (node is active), `SETTINGS_SAVE_FAILED` | no | **real** |
+| `reorder_nodes` | `ids: string[]` (all IDs, new order) | `Node[]` | `REORDER_MISMATCH`, `SETTINGS_SAVE_FAILED` | no | **real** |
+| `select_node` | `id: string` | `Status` | `NODE_NOT_FOUND`, `SETTINGS_SAVE_FAILED` | no | **real** (selection; live switch in B2.4) |
 | `test_node` | `id: string` | `NodeTestResult` | `NODE_NOT_FOUND`, `CORE_*`, `BUSY` | no | stub |
 
 - **Import** accepts `hy2://`, `hysteria2://`, `vless://`, one link per line; blank lines
@@ -145,9 +146,9 @@ version (non-null → `VALIDATION_FAILED`, field `pinSha256`, code `FIELD_INVALI
 | `connect` | — | `Status` | `NO_NODES`, `NO_NODE_SELECTED`, `CORE_*`, `SYSTEM_PROXY_SET_FAILED`, `HELPER_NOT_INSTALLED`, `HELPER_*`, `TUN_START_FAILED`, `PORT_IN_USE`, `DNS_BOOTSTRAP_FAILED`, `BUSY` | TUN: no (helper already installed) | stub |
 | `disconnect` | — | `Status` | `RESTORE_INCOMPLETE` (with `error.restoreReport`, §2.7) | no | returns status |
 | `get_status` | — | `Status` | — | no | placeholder |
-| `set_capture_mode` | `mode: CaptureMode` | `Status` | as `connect` when connected | no | memory |
-| `set_routing_mode` | `mode: RoutingMode` | `Status` | as `connect` when connected | no | memory |
-| `set_dns_profile` | `profile: DnsProfile` | `Status` | as `connect` when connected | no | memory |
+| `set_capture_mode` | `mode: CaptureMode` | `Status` | as `connect` when connected; `SETTINGS_SAVE_FAILED` | no | **persisted** |
+| `set_routing_mode` | `mode: RoutingMode` | `Status` | as `connect` when connected; `SETTINGS_SAVE_FAILED` | no | **persisted** |
+| `set_dns_profile` | `profile: DnsProfile` | `Status` | as `connect` when connected; `SETTINGS_SAVE_FAILED` | no | **persisted** |
 
 - `connect` returns once the state is `connected` (or `direct`), or fails. Progress is
   visible through `statusChanged` events (`connecting` first).
@@ -174,10 +175,10 @@ version (non-null → `VALIDATION_FAILED`, field `pinSha256`, code `FIELD_INVALI
 
 | Command | Params | Returns | Errors | Elevation | B1 |
 |---|---|---|---|---|---|
-| `get_failover_settings` | — | `FailoverSettings` | — | no | placeholder (defaults) |
-| `set_failover_settings` | `settings: FailoverSettings` | `FailoverSettings` | `VALIDATION_FAILED` | no | memory, **validated** |
-| `get_safety_settings` | — | `SafetySettings` | — | no | placeholder (defaults) |
-| `set_safety_settings` | `settings: SafetySettings` | `SafetySettings` | `VALIDATION_FAILED` | no | memory |
+| `get_failover_settings` | — | `FailoverSettings` | — | no | **real** |
+| `set_failover_settings` | `settings: FailoverSettings` | `FailoverSettings` | `VALIDATION_FAILED`, `SETTINGS_SAVE_FAILED` | no | **persisted**, validated |
+| `get_safety_settings` | — | `SafetySettings` | — | no | **real** |
+| `set_safety_settings` | `settings: SafetySettings` | `SafetySettings` | `VALIDATION_FAILED`, `SETTINGS_SAVE_FAILED` | no | **persisted** |
 
 `FailoverSettings` validation (field → rule): `probeTargets` → 2–5 http(s) URLs with ≥ 2
 distinct hosts; `probeIntervalSecs` 5–300; `probeTimeoutSecs` 1–30 and < interval;
@@ -211,8 +212,8 @@ attempt, scheduled or manual, is also emitted as `rulesUpdated`.
 
 | Command | Params | Returns | Errors | Elevation | B1 |
 |---|---|---|---|---|---|
-| `get_settings` | — | `AppSettings` | — | no | placeholder (defaults) |
-| `set_settings` | `settings: AppSettings` | `AppSettings` | `VALIDATION_FAILED` (`rulesUpdateIntervalHours` 1–168), `LAUNCH_AT_LOGIN_FAILED`, `SETTINGS_SAVE_FAILED` | no | memory, **validated** |
+| `get_settings` | — | `AppSettings` | — | no | **real** |
+| `set_settings` | `settings: AppSettings` | `AppSettings` | `VALIDATION_FAILED` (`rulesUpdateIntervalHours` 1–168), `LAUNCH_AT_LOGIN_FAILED`, `SETTINGS_SAVE_FAILED` | no | **persisted**, validated (launch-at-login / auto-connect / close-to-tray take effect in B5) |
 | `get_logs` | `limit: number, minLevel: LogLevel \| null` | `LogEntry[]` (oldest first) | — | no | returns `[]` |
 | `export_diagnostics` | — | `DiagnosticsExport` | `DIAGNOSTICS_EXPORT_FAILED` | no | stub |
 | `restore_networking` | — | `RestoreReport` (only when fully restored) | `RESTORE_INCOMPLETE` (with `error.restoreReport`, §2.7) | only if helper is not installed but a TUN/firewall journal exists | stub |
@@ -329,6 +330,23 @@ Rebuilt on every status / node change:
 Tray actions run the same backend operations as the commands. A tray action that fails
 emits `errorRaised` (so the UI can show it); state changes arrive as the usual
 `statusChanged` / `nodesChanged` events.
+
+### 2.9 Storage (B2.2)
+
+| What | Where | Notes |
+|---|---|---|
+| Node list (non-secret: name, protocol, server, port, SNI, options, last test), order, selection | `<app config dir>/nodes.json` | macOS: `~/Library/Application Support/io.github.mosb2bls.edgeclient/`; Windows: `%APPDATA%\io.github.mosb2bls.edgeclient\`. Atomic writes; mode 0600 / dir 0700 on macOS. **Contains no secrets.** |
+| Modes, failover, safety, app settings | `<app config dir>/settings.json` | Missing fields fall back to defaults. |
+| Node secrets (HY2 password, obfs password; VLESS UUID, REALITY public key, short ID) | OS keychain: one item, service `io.github.mosb2bls.edgeclient`, account `node-secrets` | macOS Keychain / Windows Credential Manager. One item for all nodes → at most one macOS access prompt per launch. |
+
+- A corrupt `nodes.json` / `settings.json` is moved aside (`*.json.corrupt`), the app starts
+  with an empty list / defaults, and `errorRaised` (`SETTINGS_INVALID`) is emitted at startup.
+- If the keychain cannot be read at startup, nodes still list but with
+  `secretMissing: true` and empty masked fields, an `errorRaised` (`KEYCHAIN_*` /
+  `SECRET_MISSING`) is emitted, and **any change that would rewrite secrets is refused**
+  with that error, so stored secrets are never overwritten with an incomplete set.
+- Every change writes the keychain first and the file second; if the file write fails the
+  keychain change is rolled back and nothing changes.
 
 ## 3. Events (backend → UI)
 
@@ -469,13 +487,16 @@ LAN names, and any direct (China) domain in `rule` mode. AAAA queries are answer
 
 All types are defined in `bindings.ts`; key semantics:
 
-- **`Node`** — `{ id, name, protocol, server, port, details, lastTest }`. `id` is a UUID
+- **`Node`** — `{ id, name, protocol, server, port, details, lastTest, secretMissing }`.
+  `secretMissing: true` means its credentials are not available from the keychain:
+  connecting fails with `SECRET_MISSING`; the user must edit the node and re-enter them. `id` is a UUID
   assigned by the backend. `details` is a union tagged by `protocol`:
   - `hysteria2`: `passwordMasked`, `serverPorts` (port-hopping ranges like `"20000-30000"`,
     empty = single port), `sni`, `insecure`, `obfsPasswordMasked` (non-null = salamander
     obfs on), `pinSha256`, `upMbps`, `downMbps`.
   - `vless_reality`: `uuidMasked`, `flow` (always `xtls-rprx-vision`), `sni`,
-    `fingerprint`, `publicKeyMasked`, `shortIdMasked`, `spiderX`. Encryption `none`,
+    `fingerprint`, `publicKeyMasked`, `shortIdMasked` (always `"••••"`, or `""` if empty /
+    missing — short IDs are too short to show a prefix), `spiderX`. Encryption `none`,
     security `reality`, transport `tcp` are fixed and not exposed.
 - **`NodeForm`** — union tagged by `protocol` (`Hy2Form` / `VlessForm`). Secret fields are
   `SecretInput`: `{kind:"set", value}` | `{kind:"keep"}` | `{kind:"clear"}`.
@@ -567,6 +588,11 @@ Things the UI must explain to the user (wording is the UI's choice; substance is
     reads the clipboard on its own.
 13. **Secrets** are shown masked only; there is no "reveal" command. To change a secret,
     the user re-enters it.
-14. **Placeholder data (B1):** two nodes named `[placeholder] …` and fixed statuses are
-    returned until Phase B2. Most actions return `NOT_IMPLEMENTED`; render that error
-    gracefully.
+14. **Real data (B2.2):** the node list starts **empty** and is persisted; there are no
+    placeholder nodes any more. Show an empty state with import actions. Connect, test, QR
+    import, helper, rules update, diagnostics and restore still return `NOT_IMPLEMENTED`.
+15. **`secretMissing` nodes:** show a clear "credentials missing — edit to re-enter"
+    state; disable Connect/Test for them.
+16. **Keychain prompt (macOS):** the first save, and the first launch after the app
+    binary changes, may show a macOS "allow access to keychain" prompt (expected for
+    unsigned builds). Choosing "Always Allow" avoids repeats until the next build.
