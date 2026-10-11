@@ -231,6 +231,24 @@ overshoot.
 | Sub-line (progress text) | Cross-fade on every change (120 ms) |
 | Primary button | Fill / text / border colours transition (200 ms, enter); label cross-fades with a 3 px rise (120 ms); press = 1 px down (120 ms) |
 
+The sub-line cross-fade is kept even though progress text changes 4–5 times while
+connecting (approved).
+
+### 3. Failover (U2.4.3)
+
+Tokens: `swapTimeline`; component `src/ui/Swap.tsx` (old and new content share one grid
+cell, so nothing jumps). Measured with Force failover in the browser: each swap completes
+in ≈ 300 ms, no overshoot.
+
+| Element | Motion |
+|---|---|
+| State word | CONNECTED → amber FAILING OVER → CONNECTED, via moment 2's counter |
+| Node row (name, latency, badge) | Slides sideways: old out 16 px left + fade (160 ms, exit), new in from 16 px right (320 ms, enter), clipped to the row |
+| "Node" / "Node · on fallback" label | Cross-fade (200 ms) |
+| Bottom-left corner (`HY2 · UDP 24443` → `REALITY · TCP 443`) | Cross-fade (200 ms) |
+| Last-event line (failover reason) | Cross-fade (200 ms) |
+| Sub-line (`On fallback · reason`) | Moment 2 cross-fade |
+
 ## 6. Dependencies
 
 | Package | Version | Why |

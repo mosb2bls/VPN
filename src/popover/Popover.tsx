@@ -21,6 +21,7 @@ import { protocolBadge, rate, since, transport } from "../lib/format";
 import { applyStatus, selectLastEvent, useApp } from "../state/store";
 import { Frame, MetaLabel } from "../ui/Frame";
 import { Segmented } from "../ui/Segmented";
+import { Swap } from "../ui/Swap";
 import { NodeSheet } from "./NodeSheet";
 import { TONE_CLASS, derivePopoverView, isProxying, type Action, type Notice } from "./view";
 
@@ -165,7 +166,10 @@ export function Popover() {
         grid={false}
         tl="EdgeClient"
         tr="01 / Status"
-        bl={shown ? `${protocolBadge(shown.protocol)} · ${transport(shown.protocol)} ${shown.port}` : "No node"}
+        bl={(() => {
+          const t = shown ? `${protocolBadge(shown.protocol)} · ${transport(shown.protocol)} ${shown.port}` : "No node";
+          return <Swap k={t}>{t}</Swap>;
+        })()}
         br={<span className={`tabular ${live ? "text-ink" : "text-ink-muted"}`}>{since(live ? status?.connectedSince : null, now)}</span>}
       >
         {!status || !view ? (
@@ -214,15 +218,24 @@ export function Popover() {
               aria-haspopup="dialog"
               onClick={() => (nodes.length ? setSheet(true) : act("open_nodes"))}
             >
-              <MetaLabel muted>{view.onFallback ? "Node · on fallback" : "Node"}</MetaLabel>
+              <MetaLabel muted>
+                <Swap k={view.onFallback ? "fallback" : "node"}>{view.onFallback ? "Node · on fallback" : "Node"}</Swap>
+              </MetaLabel>
               <span className="mt-1 flex items-center gap-2">
-                <span className="min-w-0 flex-1 truncate text-body font-medium">{shown ? shown.name : nodes.length ? "Choose a node" : "No nodes — add one in Settings"}</span>
-                {shown?.secretMissing ? (
-                  <span className="label text-vermilion-text">No creds</span>
-                ) : (
-                  shown?.lastTest?.ok && <span className="label tabular text-ink-muted">{shown.lastTest.latencyMs} ms</span>
-                )}
-                {shown && <span className="label border border-ink px-1 leading-[14px]">{protocolBadge(shown.protocol)}</span>}
+                {/* Motion moment 3: on a node change the row slides to the new node. */}
+                <Swap k={shown?.id ?? "none"} variant="slideX" className="min-w-0 flex-1">
+                  <span className="flex h-5 items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate text-body font-medium">
+                      {shown ? shown.name : nodes.length ? "Choose a node" : "No nodes — add one in Settings"}
+                    </span>
+                    {shown?.secretMissing ? (
+                      <span className="label text-vermilion-text">No creds</span>
+                    ) : (
+                      shown?.lastTest?.ok && <span className="label tabular text-ink-muted">{shown.lastTest.latencyMs} ms</span>
+                    )}
+                    {shown && <span className="label border border-ink px-1 leading-[14px]">{protocolBadge(shown.protocol)}</span>}
+                  </span>
+                </Swap>
                 <Chevron />
               </span>
             </button>
@@ -276,7 +289,9 @@ export function Popover() {
             {/* row 16 · last event */}
             <button type="button" className="flex items-center gap-2 text-left" title={lastText} aria-label="Last event">
               <MetaLabel muted>Last</MetaLabel>
-              <span className={`min-w-0 flex-1 truncate text-secondary ${lastClass}`}>{lastText}</span>
+              <Swap k={lastText} className="min-w-0 flex-1">
+                <span className={`block truncate text-secondary ${lastClass}`}>{lastText}</span>
+              </Swap>
             </button>
 
             {/* row 17 · footer */}

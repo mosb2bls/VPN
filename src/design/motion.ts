@@ -63,3 +63,16 @@ export const stateTimeline = {
   sub: { duration: duration.fast, ease: ease.enter },
   label: { duration: duration.fast, ease: ease.enter },
 } as const;
+
+/**
+ * Motion moment 3 — failover (UI.md §5, D26). The word's amber → blue changes
+ * come from moment 2. Here: the node row slides sideways to the new node, and
+ * the node label, transport corner label and last-event line cross-fade.
+ */
+export const swapTimeline = {
+  slideIn: { duration: duration.slow, ease: ease.enter },
+  slideOut: { duration: duration.fast + 0.04, ease: ease.exit },
+  /** px the node row travels sideways. */
+  slideShift: 16,
+  fade: { duration: duration.base, ease: ease.enter },
+} as const;

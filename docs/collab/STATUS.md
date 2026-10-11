@@ -28,7 +28,7 @@ Each agent edits only its own section.
 
 ## UI
 
-- **Phase/step:** U2.4.2 — motion moment 2: connect / disconnect (awaiting owner review)
+- **Phase/step:** U2.4.3 — motion moment 3: failover (awaiting owner review)
 - **SPEC version:** 1.2.1 (`popoverHidden` used; spiderX hidden/rejected like pinSha256)
 - **Real / stubbed:** `src/api/client.ts` wraps `bindings.ts` (real inside Tauri, mock in a
   browser; `VITE_USE_MOCK` overrides). Mock simulates every SPEC command, event and error
