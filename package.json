@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test:rust": "cargo test --workspace"
+    "test:rust": "cargo test --workspace",
+    "gen:bindings": "UPDATE_BINDINGS=1 cargo test -p edge-app --lib bindings_are_current"
   },
   "dependencies": {
     "react": "^19.1.0",

@@ -1,17 +1,17 @@
-// Phase B0: default Tauri template command, kept so the untouched default
-// frontend still works. Replaced by the SPEC command set in Phase B1.
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
+pub mod api;
+mod stub;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let builder = api::specta_builder();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![greet])
-        .setup(|app| {
+        .manage(api::commands::AppState::default())
+        .invoke_handler(builder.invoke_handler())
+        .setup(move |app| {
             use tauri::Manager;
+            builder.mount_events(app);
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.set_title(edge_core::APP_NAME);
             }
