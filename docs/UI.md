@@ -1,7 +1,7 @@
 # EdgeClient — UI notes
 
 Owner: UI agent. Approved design decisions, tokens and frontend structure.
-Built against **SPEC v1.0.1**.
+Built against **SPEC v1.1.0**.
 
 ## 1. Approved decisions (U0)
 
@@ -26,6 +26,11 @@ Built against **SPEC v1.0.1**.
 | D18 | Primary button: solid ink to start or fix (CONNECT, TRY AGAIN, SET UP TUN, RESTORE NETWORKING); outline while active or busy (CANCEL, DISCONNECT, TURN OFF, DISCONNECTING…, RECOVERING…). BLOCKED uses solid DISCONNECT. |
 | D19 | Notice block (rows 12–15, replaces coverage note + stats): 3 px bar — vermilion = error, mustard = warning, ink = info — with ink text on paper. Used for BLOCKED, NOT RESTORED, ERROR, HELPER MISSING, RECOVERING, and DEGRADED / RECONNECTING in system-proxy mode ("Apps may connect directly — no kill switch"). |
 | D20 | Kill switch engaged **and** restore incomplete → word BLOCKED, sub "Restore incomplete — kill switch still on", failed items listed, primary RESTORE NETWORKING. |
+| D21 | **State carried by the colour of the word** (owner, U2.3) — the hanging status dot and the HY2/REALITY tick labels are removed (supersedes D3, D4, D13, D16). Colours: ink (OFF, HELPER MISSING, DISCONNECTING), amber `mustard-text #94690A` (CONNECTING, DEGRADED, FAILING OVER, RECONNECTING, RECOVERING), cobalt (CONNECTED), vermilion `#D34F2E` (ERROR, BLOCKED, NOT RESTORED — large text ≥ 3:1), DIRECT = hollow outlined ink letters. The frame keeps its plain ticks. |
+| D22 | Last-event line: muted when older than 10 min or from before the current connection; an action's own result (e.g. import summary, command error) takes the line until the next action. |
+| D23 | Empty node list: word OFF, sub "No nodes yet", info notice with Import from clipboard / Open settings, primary ADD NODE. |
+| D24 | `secretMissing` node: info-warn notice "Credentials missing — edit to re-enter", CONNECT disabled, "No creds" next to the node; Test skips it. |
+| D25 | Node switcher sheet: paper-raised card (`shadow-sheet`) over a 70 % paper wash; rows 48 px — name, mono sub-line `PROTOCOL · server:port` (or "carrying traffic"), latency / Testing… / Failed / Untested / No creds on the right; cobalt bar marks the selected node. Footer: TEST ALL, MANAGE NODES. ↑/↓, Enter, Esc. |
 | D8 | **NOT RESTORED** (partial restore, SPEC §2.7): shown whenever `lastRestore.fullyRestored` is false and the app is not proxying; never looks like OFF. Lists each failed/skipped item, offers Retry (Restore networking) and explains `--restore-networking`. Only an engaged kill switch (BLOCKED) ranks above it. |
 
 ## 2. Frontend structure
@@ -152,14 +157,13 @@ time (muted `00:00:00` when not connected).
 
 | Rows | Block |
 |---|---|
-| 1–2 | Status instrument: `HY2` tick at column 7, `REALITY` tick at column 10; dot hangs from the active/selected node's tick |
-| 3–5 | State word (30 px, 850, 82 %) + one line: progress text / consequence |
-| 6–7 | Node: name, last latency, protocol badge, chevron (opens switcher, U2.3) |
-| 8–9 | Primary action, 40 px ink button |
-| 10 | Routing: RULE / GLOBAL / DIRECT |
-| 11 | Capture: SYSTEM PROXY / TUN |
-| 12–13 | Coverage note (system proxy: required copy; TUN: whole device + kill switch) — or notice (rows 12–15, D19) |
-| 14–15 | Up / Down / Latency (18 px tabular; `—` when idle) |
+| 1–4 | State word (30 px, 850, 82 %, coloured per D21) + one line: progress text / consequence |
+| 5–6 | Node: name, last latency, protocol badge, chevron (opens the switcher sheet) |
+| 7–8 | Primary action, 40 px button (D18) |
+| 9 | Routing: RULE / GLOBAL / DIRECT |
+| 10 | Capture: SYSTEM PROXY / TUN |
+| 11–12 | Coverage note (system proxy: required copy; TUN: whole device + kill switch) — or notice (rows 11–15, D19) |
+| 13–15 | Up / Down / Latency (18 px tabular; `—` when idle) |
 | 16 | Last event (failover reason or error; click for details) |
 | 17 | Footer: SETTINGS · RESTORE NETWORKING · QUIT |
 
@@ -168,7 +172,7 @@ state; HELPER MISSING replaces OFF in TUN without helper).
 
 ### Popover states (U2.2)
 
-| State | Word | Dot | Sub-line | Primary | Notice |
+| State | Word (colour) | — | Sub-line | Primary | Notice |
 |---|---|---|---|---|---|
 | OFF | OFF | ink, retracted | Not protected · traffic goes out normally | CONNECT (disabled without nodes) | — |
 | HELPER MISSING | HELPER MISSING | ink, retracted | TUN mode needs a one-time helper install | SET UP TUN → Settings › Helper | info |

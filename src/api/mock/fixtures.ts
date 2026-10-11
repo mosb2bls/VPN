@@ -53,6 +53,7 @@ const hy2 = (
       ...extra,
     },
     lastTest,
+    secretMissing: false,
   },
 });
 
@@ -79,11 +80,12 @@ const vless = (
       sni: "www.example.org",
       fingerprint: "chrome",
       publicKeyMasked: mask("mockPublicKeyAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
-      shortIdMasked: mask("0123abcd"),
+      shortIdMasked: "••••", // SPEC 1.1.0: always "••••" (or "" when empty)
       spiderX: null,
       ...extra,
     },
     lastTest,
+    secretMissing: false,
   },
 });
 
@@ -135,6 +137,9 @@ export function manyNodes(): NodeFixture[] {
     }),
     hy2(newId(), "Travel", "travel.example.com", 443, "mock-hy2-password-5"),
   ];
+  // "Office" lost its keychain entry (SPEC §9.15).
+  const office = extra.find((f) => f.node.name === "Office");
+  if (office) office.node = { ...office.node, secretMissing: true };
   return [...base, ...extra];
 }
 

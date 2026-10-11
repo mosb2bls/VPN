@@ -94,7 +94,10 @@ export async function startStore() {
   // Subscribe first so nothing is lost between the snapshot and the listeners.
   await Promise.all([
     on("statusChanged", (p) => applyStatus(p.status, p.reason)),
-    on("nodesChanged", (p) => set({ nodes: p.nodes })),
+    // nodesChanged also carries the selection (import, delete, tray) — keep Status in step.
+    on("nodesChanged", (p) =>
+      set({ nodes: p.nodes, status: state.status ? { ...state.status, selectedNodeId: p.selectedNodeId } : state.status }),
+    ),
     on("trafficStatsUpdated", (p) => set({ stats: p.stats })),
     on("healthCheck", (p) => set({ health: p })),
     on("helperStatusChanged", (p) => set({ helper: p.status })),

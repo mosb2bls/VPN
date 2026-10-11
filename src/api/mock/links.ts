@@ -83,10 +83,11 @@ export function parseLink(line: string): ParsedLink {
           sni,
           fingerprint: fp,
           publicKeyMasked: mask(q.get("pbk")!),
-          shortIdMasked: mask(q.get("sid") ?? ""),
+          shortIdMasked: q.get("sid") ? "••••" : "",
           spiderX: q.get("spx"),
         },
         lastTest: null,
+        secretMissing: false,
       },
     };
   }
@@ -126,6 +127,7 @@ export function parseLink(line: string): ParsedLink {
         downMbps: num("downmbps"),
       },
       lastTest: null,
+      secretMissing: false,
     },
   };
 }

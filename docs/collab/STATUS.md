@@ -26,11 +26,11 @@ Each agent edits only its own section.
 
 ## UI
 
-- **Phase/step:** U2.2 — every popover state (awaiting owner review)
-- **SPEC version:** 1.0.1 (mock import parser follows §2.1.1; `pinSha256` must be null)
+- **Phase/step:** U2.3 — quick node switcher sheet (awaiting owner review)
+- **SPEC version:** 1.1.0 (`Node.secretMissing` handled; empty node list has an empty state)
 - **Real / stubbed:** `src/api/client.ts` wraps `bindings.ts` (real inside Tauri, mock in a
   browser; `VITE_USE_MOCK` overrides). Mock simulates every SPEC command, event and error
-  code. The `popover` window renders the designed popover (`src/popover/`, all states);
-  the `settings` window still renders the U1.1 debug view until U3. Motion comes in U2.4.
+  code. The `popover` window renders the designed popover (`src/popover/`: all states,
+  node sheet); `settings` still renders the U1.1 debug view until U3. Motion comes in U2.4.
 - **Open requests:** none.
 - **Known issues:** popover inside the real Tauri window not yet checked (`cargo run -p edge-app`).

@@ -1,40 +1,38 @@
 // What the popover shows, derived from backend state in one place so the
-// priority rules stay consistent (UI.md D7, D8, D12):
+// priority rules stay consistent (UI.md D7, D8, D20, D21):
 //   1. BLOCKED       kill switch engaged — traffic is blocked
 //   2. NOT RESTORED  last restore incomplete and not proxying — never looks like OFF
-//   3. connection state, with HELPER MISSING replacing OFF in TUN without helper
-import type { ConnectionState, HelperStatus, Node, Protocol, RestoreReport, Status } from "../api/bindings";
+//   3. connection state; when idle, "no nodes", "credentials missing" and
+//      "helper missing" take precedence over plain OFF
+// The state is carried by the colour of the state word (owner, D21).
+import type { ConnectionState, HelperStatus, Node, RestoreReport, Status } from "../api/bindings";
 
-export type Tone = "ink" | "mustard" | "cobalt" | "vermilion" | "ring";
-export type PrimaryAction = "connect" | "disconnect" | "restore" | "open_helper" | "none";
-export type LinkAction = "restore" | "open_logs" | "open_helper";
+/** Colour of the state word. `hollow` = outlined letters (DIRECT). */
+export type Tone = "ink" | "amber" | "cobalt" | "vermilion" | "hollow";
+export type Action = "connect" | "disconnect" | "restore" | "open_helper" | "open_nodes" | "open_logs" | "import_clipboard" | "none";
 
 export interface Notice {
   /** error = vermilion bar, warn = mustard bar, info = ink bar. Text is always ink on paper (D14). */
   tone: "error" | "warn" | "info";
   title: string;
   lines: string[];
-  links: { label: string; action: LinkAction }[];
+  links: { label: string; action: Action }[];
 }
 
 export interface PopoverView {
   /** Stable key for animating state changes. */
   key: string;
   word: string;
+  tone: Tone;
   /** One line under the state word (progress text, consequence, or reason). */
   sub: string;
   /** Render `sub` as a mono label (DIRECT: "NOT PROXIED — NO PROTECTION"). */
   subMono: boolean;
-  tone: Tone;
-  /** Line drawn down from the tick (busy / connected) or retracted. */
-  dropped: boolean;
-  /** Which labelled tick the dot hangs from. */
-  tick: Protocol;
   /** Replaces the coverage note + stats area when present. */
   notice: Notice | null;
   /** Running on the fallback node after automatic failover. */
   onFallback: boolean;
-  primary: { label: string; action: PrimaryAction; disabled: boolean; variant: "solid" | "outline" };
+  primary: { label: string; action: Action; disabled: boolean; variant: "solid" | "outline" };
 }
 
 const PROXYING: ConnectionState[] = ["connected", "degraded", "failing_over", "reconnecting"];
@@ -42,6 +40,14 @@ const PROXYING: ConnectionState[] = ["connected", "degraded", "failing_over", "r
 export function isProxying(s: Status) {
   return PROXYING.includes(s.state);
 }
+
+export const TONE_CLASS: Record<Tone, string> = {
+  ink: "text-ink",
+  amber: "text-mustard-text",
+  cobalt: "text-cobalt",
+  vermilion: "text-vermilion",
+  hollow: "text-transparent [-webkit-text-stroke:1.25px_var(--color-ink)]",
+};
 
 export function derivePopoverView(
   status: Status,
@@ -51,44 +57,42 @@ export function derivePopoverView(
   nodes: Node[],
 ): PopoverView {
   const shown = nodes.find((n) => n.id === (status.activeNodeId ?? status.selectedNodeId));
-  const tick: Protocol = shown?.protocol ?? "hysteria2";
   const proxying = isProxying(status);
-  const notRestored = !!restore && !restore.fullyRestored && !proxying && status.state !== "connecting";
+  const restoreIncomplete = !!restore && !restore.fullyRestored && !proxying && status.state !== "connecting";
   const helperMissing = status.captureMode === "tun" && helper !== null && !helper.installed;
-  const base = { tick, dropped: false, notice: null as Notice | null, subMono: false, onFallback: !!status.failover };
-  const solid = (label: string, action: PrimaryAction, disabled = false) => ({ label, action, disabled, variant: "solid" as const });
-  const outline = (label: string, action: PrimaryAction, disabled = false) => ({ label, action, disabled, variant: "outline" as const });
+  const base = { notice: null as Notice | null, subMono: false, onFallback: !!status.failover };
+  const solid = (label: string, action: Action, disabled = false) => ({ label, action, disabled, variant: "solid" as const });
+  const outline = (label: string, action: Action, disabled = false) => ({ label, action, disabled, variant: "outline" as const });
 
-  const failedItems = (r: RestoreReport) => {
+  const failed = (r: RestoreReport): Notice => {
     const bad = r.items.filter((i) => i.result === "failed" || i.result === "skipped");
     const lines = bad.slice(0, 2).map((i) => `${i.label} — ${i.result === "failed" ? "not restored" : "not attempted"}`);
     if (bad.length > 2) lines.push(`+ ${bad.length - 2} more`);
-    return { count: bad.length, lines };
+    return {
+      tone: "error",
+      title: `${bad.length} setting${bad.length === 1 ? "" : "s"} still changed`,
+      lines,
+      links: [{ label: "Details", action: "open_logs" }],
+    };
   };
-  const restoreIncomplete = !!restore && !restore.fullyRestored && !proxying;
 
   if (status.killSwitchActive) {
-    // Kill switch held after an incomplete restore: the fix is restoring, not disconnecting.
-    if (restoreIncomplete && restore) {
-      const f = failedItems(restore);
+    if (restoreIncomplete && restore)
       return {
         ...base,
         key: "blocked_restore",
         word: "BLOCKED",
-        sub: "Restore incomplete — kill switch still on",
         tone: "vermilion",
-        dropped: true,
-        notice: { tone: "error", title: `${f.count} setting${f.count === 1 ? "" : "s"} still changed`, lines: f.lines, links: [{ label: "Details", action: "open_logs" }] },
+        sub: "Restore incomplete — kill switch still on",
+        notice: failed(restore),
         primary: solid("RESTORE NETWORKING", "restore"),
       };
-    }
     return {
       ...base,
       key: "blocked",
       word: "BLOCKED",
-      sub: reason ?? "Kill switch on — traffic is blocked",
       tone: "vermilion",
-      dropped: true,
+      sub: reason ?? "Kill switch on — traffic is blocked",
       notice: {
         tone: "error",
         title: "Traffic is blocked on purpose",
@@ -99,27 +103,18 @@ export function derivePopoverView(
     };
   }
 
-  if (notRestored && restore) {
-    const f = failedItems(restore);
+  if (restoreIncomplete && restore)
     return {
       ...base,
       key: "not_restored",
       word: "NOT RESTORED",
-      sub: "Network settings are not back to normal",
       tone: "vermilion",
-      notice: { tone: "error", title: `${f.count} setting${f.count === 1 ? "" : "s"} still changed`, lines: f.lines, links: [{ label: "Details", action: "open_logs" }] },
+      sub: "Network settings are not back to normal",
+      notice: failed(restore),
       primary: solid("RESTORE NETWORKING", "restore"),
     };
-  }
 
-  const busy = (word: string, sub: string, tone: Tone = "mustard") => ({
-    ...base,
-    key: status.state,
-    word,
-    sub: reason ?? sub,
-    tone,
-    dropped: true,
-  });
+  const busy = (word: string, sub: string, tone: Tone = "amber") => ({ ...base, key: status.state, word, tone, sub: reason ?? sub });
   // System proxy has no kill switch: say so whenever the proxy is not working (SPEC §9.2).
   const proxyGap: Notice | null =
     status.captureMode === "system_proxy"
@@ -133,13 +128,46 @@ export function derivePopoverView(
 
   switch (status.state) {
     case "disconnected":
+      if (nodes.length === 0)
+        return {
+          ...base,
+          key: "empty",
+          word: "OFF",
+          tone: "ink",
+          sub: "No nodes yet",
+          notice: {
+            tone: "info",
+            title: "Add your first node",
+            lines: ["Paste a hy2:// or vless:// link, import a QR image, or enter the details by hand in Settings."],
+            links: [
+              { label: "Import from clipboard", action: "import_clipboard" },
+              { label: "Open settings", action: "open_nodes" },
+            ],
+          },
+          primary: solid("ADD NODE", "open_nodes"),
+        };
+      if (shown?.secretMissing)
+        return {
+          ...base,
+          key: "secret_missing",
+          word: "OFF",
+          tone: "ink",
+          sub: "Credentials missing for this node",
+          notice: {
+            tone: "warn",
+            title: "Credentials missing — edit to re-enter",
+            lines: [`The saved password or key for “${shown.name}” is no longer in the system keychain.`],
+            links: [{ label: "Edit node", action: "open_nodes" }],
+          },
+          primary: solid("CONNECT", "connect", true),
+        };
       if (helperMissing)
         return {
           ...base,
           key: "helper_missing",
           word: "HELPER MISSING",
-          sub: "TUN mode needs a one-time helper install",
           tone: "ink",
+          sub: "TUN mode needs a one-time helper install",
           notice: {
             tone: "info",
             title: "Install the helper to use TUN",
@@ -151,20 +179,13 @@ export function derivePopoverView(
           },
           primary: solid("SET UP TUN", "open_helper"),
         };
-      return {
-        ...base,
-        key: "off",
-        word: "OFF",
-        sub: "Not protected · traffic goes out normally",
-        tone: "ink",
-        primary: solid("CONNECT", "connect", nodes.length === 0),
-      };
+      return { ...base, key: "off", word: "OFF", tone: "ink", sub: "Not protected · traffic goes out normally", primary: solid("CONNECT", "connect") };
     case "connecting":
       return { ...busy("CONNECTING", "Starting"), primary: outline("CANCEL", "disconnect") };
     case "connected":
       return {
-        ...busy("CONNECTED", status.failover ? `On fallback · ${status.failover.reason}` : "Health checks passing", "cobalt"),
-        sub: status.failover ? `On fallback · ${status.failover.reason}` : (reason && reason !== "Connected" ? reason : "Health checks passing"),
+        ...busy("CONNECTED", "Health checks passing", "cobalt"),
+        sub: status.failover ? `On fallback · ${status.failover.reason}` : reason && reason !== "Connected" ? reason : "Health checks passing",
         primary: outline("DISCONNECT", "disconnect"),
       };
     case "degraded":
@@ -174,17 +195,9 @@ export function derivePopoverView(
     case "reconnecting":
       return { ...busy("RECONNECTING", "Restarting the proxy core"), notice: proxyGap, primary: outline("DISCONNECT", "disconnect") };
     case "direct":
-      return {
-        ...base,
-        key: "direct",
-        word: "DIRECT",
-        sub: "NOT PROXIED — NO PROTECTION",
-        subMono: true,
-        tone: "ring",
-        primary: outline("TURN OFF", "disconnect"),
-      };
+      return { ...base, key: "direct", word: "DIRECT", tone: "hollow", sub: "NOT PROXIED — NO PROTECTION", subMono: true, primary: outline("TURN OFF", "disconnect") };
     case "disconnecting":
-      return { ...busy("DISCONNECTING", "Restoring network settings", "ink"), dropped: false, primary: outline("DISCONNECTING…", "none", true) };
+      return { ...busy("DISCONNECTING", "Restoring network settings", "ink"), primary: outline("DISCONNECTING…", "none", true) };
     case "recovering":
       return {
         ...busy("RECOVERING", "Checking the previous session"),
@@ -202,15 +215,15 @@ export function derivePopoverView(
         ...base,
         key: "error",
         word: "ERROR",
-        sub: reason ?? "Could not connect",
         tone: "vermilion",
+        sub: reason ?? "Could not connect",
         notice: {
           tone: "error",
           title: e?.message ?? "Something went wrong",
           lines: [status.systemProxySet || status.tunActive ? "Some network changes are still in place." : "Your normal connection is in use."],
           links: [{ label: "Details", action: "open_logs" }],
         },
-        primary: solid("TRY AGAIN", "connect"),
+        primary: solid("TRY AGAIN", "connect", !!shown?.secretMissing),
       };
     }
   }

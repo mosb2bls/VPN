@@ -20,7 +20,8 @@
   --color-cobalt: #2439bc; /* connected, selection, focus */
   --color-vermilion: #d34f2e; /* error / blocked — dot, fill, border only */
   --color-vermilion-text: #b8401f; /* red text when unavoidable, 4.8:1 */
-  --color-mustard: #e7c24e; /* connecting / degraded — fill only, ink text; dot gets an ink outline */
+  --color-mustard: #e7c24e; /* connecting / degraded — fills and bars only, never text */
+  --color-mustard-text: #94690a; /* amber state word (large text), 4.2:1 */
 
   /* Type */
   --font-sans: "Archivo Variable", system-ui, sans-serif;

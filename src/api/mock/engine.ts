@@ -743,6 +743,8 @@ export class MockEngine {
           server: form.server.trim(),
           port: form.port,
           lastTest: prev?.node.lastTest ?? null,
+          // Re-entering the credential fixes a missing keychain entry.
+          secretMissing: form.password.kind === "set" ? false : (prev?.node.secretMissing ?? false),
           details: {
             protocol: "hysteria2",
             passwordMasked: keepOr(form.password, pd?.passwordMasked) ?? "••••",
@@ -767,6 +769,10 @@ export class MockEngine {
         server: form.server.trim(),
         port: form.port,
         lastTest: prev?.node.lastTest ?? null,
+        secretMissing:
+          form.uuid.kind === "set" && form.publicKey.kind === "set" && form.shortId.kind === "set"
+            ? false
+            : (prev?.node.secretMissing ?? false),
         details: {
           protocol: "vless_reality",
           uuidMasked: keepOr(form.uuid, pd?.uuidMasked) ?? "••••",
@@ -774,7 +780,7 @@ export class MockEngine {
           sni: form.sni.trim(),
           fingerprint: form.fingerprint,
           publicKeyMasked: keepOr(form.publicKey, pd?.publicKeyMasked) ?? "••••",
-          shortIdMasked: keepOr(form.shortId, pd?.shortIdMasked) ?? "••••",
+          shortIdMasked: form.shortId.kind === "set" ? (form.shortId.value ? "••••" : "") : (pd?.shortIdMasked ?? "••••"),
           spiderX: form.spiderX,
         },
       },
@@ -915,6 +921,7 @@ export class MockEngine {
         const fx = this.fixtures.find((f) => f.node.id === id);
         if (!fx) return fail(appError("NODE_NOT_FOUND"));
         if (this.testing.has(id)) return fail(appError("BUSY", { detail: "node is already being tested" }));
+        if (fx.node.secretMissing) return fail(appError("SECRET_MISSING"));
         this.testing.add(id);
         await this.acquireTestSlot();
         try {
@@ -953,6 +960,7 @@ export class MockEngine {
         if (this.isBusyState()) return fail(appError("BUSY"));
         if (!this.fixtures.length) return fail(appError("NO_NODES"));
         if (!this.node(this.status.selectedNodeId)) return fail(appError("NO_NODE_SELECTED"));
+        if (this.node(this.status.selectedNodeId)!.secretMissing) return fail(appError("SECRET_MISSING"));
         if (this.status.routingMode === "direct") {
           this.setStatus({ state: "direct", lastError: null, connectedSince: nowIso() }, "Direct mode — no proxy");
           return ok(clone(this.status));
@@ -1346,6 +1354,13 @@ export class MockEngine {
     if (PROXYING.includes(this.status.state)) return;
     this.fixtures = kind === "default" ? defaultNodes() : kind === "one" ? oneNode() : kind === "many" ? manyNodes() : [];
     this.setStatus({ selectedNodeId: this.fixtures[0]?.node.id ?? null });
+    this.emitNodes();
+  }
+
+  setSecretMissing(id: string, missing: boolean) {
+    const f = this.fixtures.find((x) => x.node.id === id);
+    if (!f) return;
+    f.node = { ...f.node, secretMissing: missing };
     this.emitNodes();
   }
 

@@ -86,7 +86,13 @@ export function DevPanel() {
             </button>
           ))}
         </div>
-        <h4>Node health</h4>
+        <h4>Node health · keychain</h4>
+        {nodes.map((n) => (
+          <label key={`k${n.id}`} className="dev-check">
+            <input type="checkbox" checked={n.secretMissing} onChange={(e) => mockEngine.setSecretMissing(n.id, e.target.checked)} />
+            {n.name}: credentials missing
+          </label>
+        ))}
         {nodes.map((n) => (
           <Select<NodeHealth>
             key={n.id}

@@ -47,7 +47,8 @@ const SWATCHES: Swatch[] = [
   sw("cobalt", "#2439BC", "Connected · selection · focus", "text"),
   sw("vermilion", "#D34F2E", "Error / blocked — dot, fill, border", "fill"),
   sw("vermilion-text", "#B8401F", "Red text when unavoidable", "text"),
-  sw("mustard", "#E7C24E", "Connecting / degraded — fill + ink text", "fill"),
+  sw("mustard", "#E7C24E", "Connecting / degraded — bars and fills only", "fill"),
+  sw("mustard-text", "#94690A", "Amber state word (large text)", "text"),
 ];
 
 function Section({ n, title, children }: { n: string; title: string; children: ReactNode }) {
