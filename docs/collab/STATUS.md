@@ -24,7 +24,7 @@ Each agent edits only its own section.
 - **Events emitted:** `nodesChanged`, `statusChanged`, `errorRaised` (tray failures,
   startup load warnings — may fire before the UI listens; logging comes in B2).
 - **Known issues:** `npm run tauri dev` fails if another Vite server holds port 1420; use
-  `cargo run -p edge-app`. Real-keychain test is opt-in and not yet run.
+  `cargo run -p edge-app`. Real-keychain test passed (owner, 2026-10-12).
 
 ## UI
 
