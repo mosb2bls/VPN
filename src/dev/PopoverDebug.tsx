@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { commands, pendingWindow } from "../api/client";
 import type { CaptureMode, RoutingMode } from "../api/bindings";
 import { protocolBadge, rate, since, transport } from "../lib/format";
-import { selectLastEvent, useApp } from "../state/store";
+import { selectLastEvent, selectNotRestored, useApp } from "../state/store";
 import { useRun } from "./useRun";
 
 function useNow(ms: number) {
@@ -36,6 +36,8 @@ export function PopoverDebug() {
   const stats = useApp((s) => s.stats);
   const helper = useApp((s) => s.helper);
   const lastEvent = useApp(selectLastEvent);
+  const notRestored = useApp(selectNotRestored);
+  const restore = useApp((s) => s.restore);
   const now = useNow(1000);
   const { run, last, busy } = useRun();
 
@@ -44,7 +46,13 @@ export function PopoverDebug() {
   const shown = nodes.find((n) => n.id === (status.activeNodeId ?? status.selectedNodeId));
   const helperMissing = status.captureMode === "tun" && helper !== null && !helper.installed;
   const off = status.state === "disconnected" || status.state === "error";
-  const stateWord = status.killSwitchActive ? "BLOCKED" : helperMissing && off ? "HELPER MISSING" : LABEL[status.state];
+  const stateWord = status.killSwitchActive
+    ? "BLOCKED"
+    : notRestored && off
+      ? "NOT RESTORED"
+      : helperMissing && off
+        ? "HELPER MISSING"
+        : LABEL[status.state];
 
   return (
     <div className="dbg dbg-pop">
@@ -73,7 +81,24 @@ export function PopoverDebug() {
           </div>
         </div>
       )}
-      {!status.killSwitchActive && status.lastError && (
+      {notRestored && restore && (
+        <div className="dbg-alert">
+          Networking is not back to normal:
+          {restore.items
+            .filter((i) => i.result === "failed" || i.result === "skipped")
+            .map((i) => (
+              <div key={i.kind}>
+                {i.label} — {i.result.toUpperCase()}: {i.errorMessage}
+              </div>
+            ))}
+          <div className="dbg-btns">
+            <button onClick={() => run("restoreNetworking", commands.restoreNetworking(), (r) => (r.fullyRestored ? "fully restored" : "incomplete"))}>
+              Retry restore
+            </button>
+          </div>
+        </div>
+      )}
+      {!status.killSwitchActive && !notRestored && status.lastError && (
         <div className="dbg-warn">
           {status.lastError.code}: {status.lastError.message}
         </div>

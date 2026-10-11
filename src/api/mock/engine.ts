@@ -22,8 +22,10 @@ import type {
   NodeTestResult,
   RecoveryOutcome,
   RecoveryReport,
-  RestoreAction,
+  RestoreItem,
+  RestoreItemKind,
   RestoreReport,
+  RestoreTrigger,
   RulesStatus,
   SafetySettings,
   Status,
@@ -40,7 +42,7 @@ import type {
   SettingsSection,
   Unlisten,
 } from "../types";
-import { appError } from "./errors";
+import { ERROR_MESSAGES, appError } from "./errors";
 import {
   DEFAULT_FAILOVER,
   DEFAULT_SAFETY,
@@ -77,7 +79,8 @@ export interface DevConfig {
   /** Failure after `connecting` started (→ `error`, OS state rolled back). */
   connectOutcome: Outcome;
   reconnectOutcome: "recover" | "give_up";
-  restoreOutcome: "ok" | "incomplete";
+  /** Items that fail (or are skipped) on the next restore; others restore cleanly. */
+  restoreFailures: Partial<Record<RestoreItemKind, "failed" | "skipped">>;
   helperInstallOutcome: Outcome<"HELPER_INSTALL_CANCELLED" | "HELPER_INSTALL_FAILED">;
   rulesOutcome: "changed" | "unchanged" | "RULES_DOWNLOAD_FAILED" | "RULES_VALIDATION_FAILED";
   qrOutcome: Outcome<"QR_NOT_FOUND" | "QR_IMAGE_UNREADABLE" | "QR_TOO_MANY_CODES">;
@@ -116,7 +119,9 @@ export type ScenarioId =
   | "direct"
   | "disconnecting"
   | "recovering"
-  | "error";
+  | "error"
+  | "restore_incomplete"
+  | "restore_incomplete_proxy";
 
 export const SCENARIOS: { id: ScenarioId; label: string }[] = [
   { id: "off", label: "OFF" },
@@ -134,6 +139,8 @@ export const SCENARIOS: { id: ScenarioId; label: string }[] = [
   { id: "disconnecting", label: "DISCONNECTING" },
   { id: "recovering", label: "RECOVERING" },
   { id: "error", label: "ERROR" },
+  { id: "restore_incomplete", label: "NOT RESTORED · TUN" },
+  { id: "restore_incomplete_proxy", label: "NOT RESTORED · proxy" },
 ];
 
 // ─────────────────────────────── helpers ────────────────────────────────
@@ -145,6 +152,40 @@ const clone = <T>(v: T): T => structuredClone(v);
 const rand = (lo: number, hi: number) => lo + Math.random() * (hi - lo);
 const PROXYING: ConnectionState[] = ["connected", "degraded", "failing_over", "reconnecting"];
 const LEVELS: LogLevel[] = ["trace", "debug", "info", "warn", "error"];
+const RESTORE_ORDER: RestoreItemKind[] = ["tun_session", "routes", "dns", "ipv6", "system_proxy", "firewall"];
+// Labels as the backend uses them (crates/core/src/restore.rs).
+const RESTORE_LABELS: Record<RestoreItemKind, string> = {
+  tun_session: "TUN session (helper)",
+  routes: "Routes",
+  dns: "DNS servers",
+  ipv6: "IPv6 settings",
+  system_proxy: "System proxy",
+  firewall: "Firewall / kill switch",
+};
+const FAIL_CODE: Record<RestoreItemKind, ErrorCode> = {
+  tun_session: "TUN_STOP_FAILED",
+  routes: "ROUTE_RESTORE_FAILED",
+  dns: "DNS_RESTORE_FAILED",
+  ipv6: "IPV6_RESTORE_FAILED",
+  system_proxy: "SYSTEM_PROXY_RESTORE_FAILED",
+  firewall: "KILL_SWITCH_REMOVE_FAILED",
+};
+const RESTORED_TEXT: Record<RestoreItemKind, (win: boolean) => string> = {
+  tun_session: () => "Stopped the TUN session and removed the interface",
+  routes: () => "Removed TUN and server-bypass routes",
+  dns: (w) => (w ? "Restored previous DNS servers on Wi-Fi" : "Restored previous DNS servers on Wi-Fi and Ethernet"),
+  ipv6: () => "Restored previous IPv6 settings on Wi-Fi",
+  system_proxy: (w) => (w ? "Restored previous WinINet proxy settings" : "Restored previous proxy settings on Wi-Fi and Ethernet"),
+  firewall: (w) => (w ? "Removed WFP kill-switch filters" : "Removed the pf kill-switch anchor"),
+};
+const FAILED_TEXT: Record<RestoreItemKind, (win: boolean) => string> = {
+  tun_session: () => "Tried to stop the TUN session; the interface is still up",
+  routes: () => "Tried to remove TUN routes; 2 routes remain",
+  dns: () => "Tried to restore DNS servers on Wi-Fi; write was refused",
+  ipv6: () => "Tried to restore IPv6 on Wi-Fi; setting unchanged",
+  system_proxy: () => "Tried to restore the system proxy; it still points to EdgeClient",
+  firewall: (w) => (w ? "Tried to remove WFP filters; they are still active" : "Tried to remove the pf anchor; it is still loaded"),
+};
 const protoLabel = (n: Node | undefined) => (n?.protocol === "vless_reality" ? "REALITY" : "HY2");
 
 function freshStatus(): Status {
@@ -158,9 +199,11 @@ function freshStatus(): Status {
     connectedSince: null,
     killSwitchActive: false,
     systemProxySet: false,
+    tunActive: false,
     failover: null,
     lastError: null,
     lastRecovery: null,
+    lastRestore: null,
   };
 }
 
@@ -175,7 +218,7 @@ export class MockEngine {
     nodeHealth: {},
     connectOutcome: "ok",
     reconnectOutcome: "recover",
-    restoreOutcome: "ok",
+    restoreFailures: {},
     helperInstallOutcome: "ok",
     rulesOutcome: "changed",
     qrOutcome: "ok",
@@ -477,13 +520,34 @@ export class MockEngine {
     this.setStatus({ state: "connected", failover: null, lastError: null }, reason);
   }
 
-  private osHeld(): Partial<Status> {
-    const tun = this.status.captureMode === "tun";
-    return { systemProxySet: !tun, killSwitchActive: false };
+  /** OS items this app has changed and not yet restored (the mock's journal). */
+  private held = new Set<RestoreItemKind>();
+
+  /** Status flags from what is actually held. `engaged`: core is down, so a held firewall blocks. */
+  private flagsFromHeld(engaged: boolean): Partial<Status> {
+    return {
+      systemProxySet: this.held.has("system_proxy"),
+      tunActive: this.held.has("tun_session"),
+      killSwitchActive: engaged && this.held.has("firewall"),
+    };
   }
 
+  private holdFor(capture: Status["captureMode"]) {
+    if (capture === "tun") {
+      for (const k of ["tun_session", "routes", "dns", "ipv6"] as const) this.held.add(k);
+      if (this.safety.killSwitch) this.held.add("firewall");
+    } else this.held.add("system_proxy");
+  }
+
+  private osHeld(): Partial<Status> {
+    this.holdFor(this.status.captureMode);
+    return this.flagsFromHeld(false);
+  }
+
+  /** Clean release (re-attach preamble, direct-fallback give-up): nothing left changed. */
   private osReleased(): Partial<Status> {
-    return { systemProxySet: false, killSwitchActive: false, activeNodeId: null, connectedSince: null, failover: null };
+    this.held.clear();
+    return { ...this.flagsFromHeld(false), activeNodeId: null, connectedSince: null, failover: null };
   }
 
   /** connecting → connected/degraded/error. Returns final result. */
@@ -498,6 +562,7 @@ export class MockEngine {
       ...(tun && this.safety.killSwitch ? ["Arming kill switch"] : []),
       "Running health check",
     ];
+    const before = new Set(this.held);
     const failAt = this.dev.connectOutcome === "ok" ? -1 : Math.min(steps.length - 1, 1 + Math.floor(Math.random() * 2));
     this.setStatus({ state: "connecting", lastError: null, failover: null }, steps[0]);
     for (let i = 0; i < steps.length; i++) {
@@ -507,7 +572,11 @@ export class MockEngine {
       if (i === failAt) {
         const e = appError(this.dev.connectOutcome as ErrorCode, { detail: `mock: failed at "${steps[i]}"` });
         this.stopTimers();
-        this.setStatus({ state: "error", lastError: e, ...this.osReleased() }, "Connection failed — network settings rolled back");
+        this.held = before; // the start attempt is rolled back; earlier leftovers stay
+        this.setStatus(
+          { state: "error", lastError: e, ...this.flagsFromHeld(true), activeNodeId: null, connectedSince: null, failover: null },
+          "Connection failed — network settings rolled back",
+        );
         this.log("error", "app", `Connect failed: ${e.code}`);
         return fail(e);
       }
@@ -534,10 +603,13 @@ export class MockEngine {
     return ok(clone(this.status));
   }
 
-  /** proxying → disconnecting → disconnected (or direct / error). */
-  private async runDisconnect(target: "disconnected" | "direct" = "disconnected"): Promise<Result<Status>> {
+  /** proxying → disconnecting → disconnected / direct, or `error` if the restore is incomplete. */
+  private async runDisconnect(
+    trigger: RestoreTrigger = "disconnect",
+    target: "disconnected" | "direct" = "disconnected",
+  ): Promise<Result<Status>> {
     const gen = ++this.gen;
-    const tun = this.status.captureMode === "tun";
+    const tun = this.held.has("tun_session");
     const steps = ["Stopping proxy core", tun ? "Removing TUN and kill switch" : "Restoring system proxy", "Restoring network settings"];
     this.stopTimers();
     for (let i = 0; i < steps.length; i++) {
@@ -545,32 +617,70 @@ export class MockEngine {
       await this.sleep(450);
       if (gen !== this.gen) return ok(clone(this.status));
     }
-    const prev = this.status.activeNodeId;
-    if (this.dev.restoreOutcome === "incomplete") {
-      const e = appError("RESTORE_INCOMPLETE", { detail: "mock: DNS settings for Wi-Fi could not be restored", recoverable: false });
-      this.setStatus(
-        { state: "error", lastError: e, ...this.osReleased(), killSwitchActive: tun && this.safety.killSwitch, activeNodeId: prev },
-        "Some network settings could not be restored",
-      );
-      this.setActive(null, "manual");
-      return fail(e);
-    }
+    const report = this.buildRestoreReport(trigger);
     this.setActive(null, "manual");
-    this.setStatus({ state: target, lastError: null, ...this.osReleased(), connectedSince: target === "direct" ? nowIso() : null }, null);
+    const e = this.applyRestore(report);
+    if (e) return fail(e);
+    this.setStatus(
+      {
+        state: target,
+        lastError: null,
+        ...this.flagsFromHeld(false),
+        activeNodeId: null,
+        failover: null,
+        connectedSince: target === "direct" ? nowIso() : null,
+      },
+      null,
+    );
     return ok(clone(this.status));
   }
 
-  private restoreActions(full: boolean): RestoreAction[] {
-    const tun = this.status.captureMode === "tun";
-    const a: RestoreAction[] = [
-      { item: "Proxy core", ok: true, message: "Stopped" },
-      { item: "System proxy (Wi-Fi)", ok: true, message: tun ? "Not set by EdgeClient" : "Restored" },
-      { item: "DNS (Wi-Fi)", ok: full, message: full ? "Restored" : "Could not write DNS settings: permission denied" },
-      { item: "Routes", ok: true, message: tun ? "Removed TUN routes" : "Unchanged" },
-      { item: "IPv6 (Wi-Fi)", ok: true, message: "Unchanged" },
-      { item: "pf kill switch", ok: true, message: tun ? "Anchor removed" : "Not present" },
-    ];
-    return a;
+  /** Run the six-item restore (SPEC §2.7) against what is held. */
+  private buildRestoreReport(trigger: RestoreTrigger, failures = this.dev.restoreFailures): RestoreReport {
+    const win = this.appInfo().platform === "windows";
+    const items: RestoreItem[] = RESTORE_ORDER.map((kind) => {
+      const label = RESTORE_LABELS[kind];
+      if (!this.held.has(kind))
+        return { kind, label, action: "Not changed by EdgeClient", result: "not_needed", errorCode: null, errorMessage: null };
+      const f = failures[kind];
+      if (!f) {
+        this.held.delete(kind);
+        return { kind, label, action: RESTORED_TEXT[kind](win), result: "restored", errorCode: null, errorMessage: null };
+      }
+      const code: ErrorCode = f === "skipped" ? "HELPER_UNREACHABLE" : FAIL_CODE[kind];
+      return {
+        kind,
+        label,
+        action: f === "skipped" ? "Not attempted — the privileged helper is not responding" : FAILED_TEXT[kind](win),
+        result: f,
+        errorCode: code,
+        errorMessage: ERROR_MESSAGES[code],
+      };
+    });
+    const clean = (r: RestoreItem["result"]) => r === "restored" || r === "not_needed";
+    return {
+      at: nowIso(),
+      trigger,
+      fullyRestored: items.every((i) => clean(i.result)),
+      items,
+      // DEPRECATED mirror (SPEC 0.3.0), still required by the type.
+      actions: items.map((i) => ({ item: i.label, ok: clean(i.result), message: i.errorMessage ?? i.action })),
+    };
+  }
+
+  /** Store + announce a report. Incomplete → state `error` with true flags; returns that error. */
+  private applyRestore(report: RestoreReport): AppError | null {
+    this.status = { ...this.status, lastRestore: report };
+    this.emit("restoreReportChanged", { report });
+    const bad = report.items.filter((i) => i.result === "failed" || i.result === "skipped");
+    this.log(bad.length ? "error" : "info", "app", bad.length ? `Restore incomplete: ${bad.map((i) => i.label).join(", ")}` : "Restore complete");
+    if (report.fullyRestored) return null;
+    const e = appError("RESTORE_INCOMPLETE", { recoverable: false, restoreReport: report });
+    this.setStatus(
+      { state: "error", lastError: e, ...this.flagsFromHeld(true), activeNodeId: null, connectedSince: null, failover: null },
+      "Networking is not fully restored",
+    );
+    return e;
   }
 
   // ── command plumbing ──
@@ -882,7 +992,8 @@ export class MockEngine {
           return ok(clone(this.status));
         }
         if (mode === "tun" && !this.helper.installed) return fail(appError("HELPER_NOT_INSTALLED"));
-        await this.runDisconnect();
+        const down = await this.runDisconnect("capture_mode_switch");
+        if (down.status === "error") return down;
         this.status = { ...this.status, captureMode: mode };
         return this.runConnect();
       }),
@@ -902,7 +1013,7 @@ export class MockEngine {
         }
         if (mode === "direct") {
           this.status = { ...this.status, routingMode: mode };
-          return this.runDisconnect("direct");
+          return this.runDisconnect("direct_mode", "direct");
         }
         return this.restartCore({ routingMode: mode }, `Restarting proxy core for ${mode.toUpperCase()} routing`);
       }),
@@ -995,35 +1106,29 @@ export class MockEngine {
 
     restoreNetworking: () =>
       this.call("restoreNetworking", async () => {
-        const full = this.dev.restoreOutcome === "ok";
-        if (this.status.state !== "disconnected" && this.status.state !== "direct") {
-          const gen = ++this.gen;
-          this.stopTimers();
-          this.setStatus({ state: "disconnecting" }, "Restoring network settings");
-          await this.sleep(1200);
-          if (gen !== this.gen) return fail(appError("BUSY"));
-        } else await this.sleep(800);
-        const actions = this.restoreActions(full);
+        if (this.status.state === "disconnecting" || this.status.state === "recovering") return fail(appError("BUSY"));
+        const gen = ++this.gen;
+        this.stopTimers();
+        this.setStatus({ state: "disconnecting" }, "Restoring network settings");
+        await this.sleep(1200);
+        if (gen !== this.gen) return fail(appError("BUSY"));
+        const report = this.buildRestoreReport("restore_networking");
         this.setActive(null, "manual");
-        if (full) this.setStatus({ state: "disconnected", lastError: null, ...this.osReleased() }, "Network settings restored");
-        else
-          this.setStatus(
-            {
-              state: "error",
-              ...this.osReleased(),
-              lastError: appError("RESTORE_INCOMPLETE", { recoverable: false, detail: "DNS (Wi-Fi): permission denied" }),
-            },
-            "Some network settings could not be restored",
-          );
-        const report: RestoreReport = { fullyRestored: full, actions };
-        return ok(report);
+        const e = this.applyRestore(report);
+        if (e) return fail(e);
+        this.setStatus(
+          { state: "disconnected", lastError: null, ...this.flagsFromHeld(false), activeNodeId: null, connectedSince: null, failover: null },
+          "Network settings restored",
+        );
+        return ok(clone(report));
       }),
 
     getAppInfo: () => this.call("getAppInfo", () => ok(this.appInfo())),
 
     quitApp: () =>
       this.call("quitApp", async () => {
-        if (this.status.state !== "disconnected") await this.runDisconnect();
+        // Quits even if the restore is incomplete; the report persists (SPEC §2.7).
+        if (this.status.state !== "disconnected") await this.runDisconnect("quit");
         this.log("info", "app", "Quit");
         setTimeout(() => this.onQuit?.(), 0);
         return ok(null);
@@ -1173,7 +1278,35 @@ export class MockEngine {
         s = { ...base, state: "error", lastError: appError("CORE_START_FAILED", { detail: "mock: sing-box exited with code 1" }) };
         why = "Connection failed — network settings rolled back";
         break;
+      case "restore_incomplete":
+      case "restore_incomplete_proxy": {
+        const tun = id === "restore_incomplete";
+        if (tun) this.installedHelper();
+        this.held.clear();
+        this.holdFor(tun ? "tun" : "system_proxy");
+        const report = this.buildRestoreReport(
+          "disconnect",
+          tun ? { dns: "failed", firewall: "failed" } : { system_proxy: "failed" },
+        );
+        s = {
+          ...base,
+          captureMode: tun ? "tun" : "system_proxy",
+          state: "error",
+          lastError: appError("RESTORE_INCOMPLETE", { recoverable: false, restoreReport: report }),
+          lastRestore: report,
+          ...this.flagsFromHeld(true),
+        };
+        why = "Networking is not fully restored";
+        break;
+      }
     }
+    if (id !== "restore_incomplete" && id !== "restore_incomplete_proxy") {
+      // Keep the mock journal consistent with the snapped state.
+      const holding = ["connected", "degraded", "failing_over", "reconnecting", "disconnecting"].includes(s.state) || id === "blocked";
+      this.held.clear();
+      if (holding) this.holdFor(s.captureMode);
+      s = { ...s, ...this.flagsFromHeld(s.killSwitchActive) };
+    } else if (s.lastRestore) this.emit("restoreReportChanged", { report: s.lastRestore });
     this.status = s;
     this.emitNodes();
     this.emit("statusChanged", { status: this.status, reason: why });
@@ -1247,34 +1380,39 @@ export class MockEngine {
     this.emit("errorRaised", { error: e });
   }
 
+  /** Launch finds a journal from a TUN session that did not shut down cleanly. */
   async simulateLaunchRecovery(outcome: RecoveryOutcome) {
     const gen = ++this.gen;
     this.stopTimers();
-    this.status = { ...this.status, ...this.osReleased(), failover: null };
-    this.setStatus({ state: "recovering", lastError: null }, "Found saved network state from the previous session");
+    this.held = new Set(["tun_session", "routes", "dns", "ipv6", "firewall"]);
+    this.status = { ...this.status, captureMode: "tun", activeNodeId: null, connectedSince: null, failover: null };
+    this.setStatus({ state: "recovering", lastError: null, ...this.flagsFromHeld(false) }, "Found saved network state from the previous session");
     await this.sleep(1200);
     if (gen !== this.gen) return;
-    const tunWas = outcome === "reattached";
-    if (tunWas) {
-      this.installedHelper();
-      this.status = { ...this.status, captureMode: "tun" };
-    }
     this.setStatus({}, outcome === "reattached" ? "Re-attaching to running session" : "Restoring network settings");
     await this.sleep(1000);
     if (gen !== this.gen) return;
-    const actions = outcome === "reattached" ? [{ item: "TUN session (helper)", ok: true, message: "Still healthy — re-attached" }] : this.restoreActions(outcome === "restored");
-    const report: RecoveryReport = { outcome, at: nowIso(), actions };
+
     if (outcome === "reattached") {
+      this.installedHelper();
+      const report: RecoveryReport = { outcome, at: nowIso(), restore: null, actions: [] };
       this.setActive(this.status.selectedNodeId, "restore");
       this.startTimers();
       this.setStatus({ state: "connected", connectedSince: nowIso(), lastRecovery: report, ...this.osHeld() }, "Re-attached to previous session");
-    } else if (outcome === "restored") {
-      this.setStatus({ state: "disconnected", lastRecovery: report }, "Previous network settings restored");
-    } else {
-      this.setStatus(
-        { state: "error", lastRecovery: report, lastError: appError("RESTORE_INCOMPLETE", { recoverable: false }) },
-        "Some network settings could not be restored",
-      );
+      this.emit("recoveryCompleted", { report });
+      return;
+    }
+    const failures =
+      outcome === "restored"
+        ? {}
+        : Object.keys(this.dev.restoreFailures).length
+          ? this.dev.restoreFailures
+          : ({ dns: "failed", firewall: "failed" } as const);
+    const restore = this.buildRestoreReport("recovery", failures);
+    const report: RecoveryReport = { outcome, at: nowIso(), restore, actions: restore.actions };
+    this.status = { ...this.status, lastRecovery: report };
+    if (!this.applyRestore(restore)) {
+      this.setStatus({ state: "disconnected", lastError: null, ...this.flagsFromHeld(false) }, "Previous network settings restored");
     }
     this.emit("recoveryCompleted", { report });
   }
@@ -1315,6 +1453,7 @@ export class MockEngine {
     this.helper = defaultHelper();
     this.lastSwitchAt = 0;
     this.switchTimes = [];
+    this.held.clear();
     this.setDev({ nodeHealth: {}, forced: {}, autoProbes: true });
     this.emitNodes();
     this.emit("statusChanged", { status: this.status, reason: null });

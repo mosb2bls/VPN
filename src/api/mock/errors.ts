@@ -1,7 +1,7 @@
 // Mock-only copy of the backend's default messages (src-tauri/src/api/error.rs).
 // `Record<ErrorCode, …>` makes TypeScript fail if SPEC adds a code we lack.
 // The UI itself always displays `error.message` from the backend.
-import type { AppError, ErrorCode, FieldError } from "../bindings";
+import type { AppError, ErrorCode, FieldError, RestoreReport } from "../bindings";
 
 export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   NOT_IMPLEMENTED: "This feature is not implemented yet.",
@@ -78,6 +78,10 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   KILL_SWITCH_FAILED: "The kill switch could not be applied.",
   KILL_SWITCH_REMOVE_FAILED: "The kill switch could not be removed. Use Restore networking.",
 
+  TUN_STOP_FAILED: "The TUN session could not be stopped.",
+  ROUTE_RESTORE_FAILED: "Some network routes could not be restored.",
+  DNS_RESTORE_FAILED: "The previous DNS settings could not be restored.",
+  IPV6_RESTORE_FAILED: "The previous IPv6 settings could not be restored.",
   JOURNAL_CORRUPT: "The saved network state is damaged. Use Restore networking.",
   RESTORE_INCOMPLETE: "Some network settings could not be restored. See details.",
 
@@ -95,7 +99,7 @@ export const ALL_ERROR_CODES = Object.keys(ERROR_MESSAGES) as ErrorCode[];
 
 export function appError(
   code: ErrorCode,
-  opts: { detail?: string | null; recoverable?: boolean; fields?: FieldError[] } = {},
+  opts: { detail?: string | null; recoverable?: boolean; fields?: FieldError[]; restoreReport?: RestoreReport | null } = {},
 ): AppError {
   return {
     code,
@@ -103,6 +107,7 @@ export function appError(
     recoverable: opts.recoverable ?? true,
     fields: opts.fields ?? [],
     detail: opts.detail ?? null,
+    restoreReport: opts.restoreReport ?? null,
   };
 }
 

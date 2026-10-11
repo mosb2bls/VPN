@@ -8,6 +8,7 @@ import type {
   HelperStatus,
   Node,
   RecoveryReport,
+  RestoreReport,
   Status,
   TrafficStats,
 } from "../api/bindings";
@@ -32,6 +33,8 @@ export interface AppState {
   health: HealthCheck | null;
   helper: HelperStatus | null;
   recovery: RecoveryReport | null;
+  /** Latest restore (SPEC §2.7). Incomplete ⇒ networking is NOT back to normal. */
+  restore: RestoreReport | null;
   /** Newest first, max 50. Failover decisions, errors, recovery. */
   activity: Activity[];
 }
@@ -46,6 +49,7 @@ let state: AppState = {
   health: null,
   helper: null,
   recovery: null,
+  restore: null,
   activity: [],
 };
 
@@ -68,6 +72,7 @@ export function applyStatus(status: Status, reason?: string | null) {
   const prev = state.status;
   set({
     status,
+    restore: status.lastRestore,
     statusReason: reason === undefined ? state.statusReason : reason,
     stats: PROXYING.has(status.state) ? state.stats : null,
     health: PROXYING.has(status.state) ? state.health : null,
@@ -109,6 +114,13 @@ export async function startStore() {
             : "Some network settings from the previous session could not be restored";
       pushActivity(p.report.outcome === "restore_incomplete" ? "error" : "info", text, undefined, p.report.at);
     }),
+    on("restoreReportChanged", (p) => {
+      set({ restore: p.report });
+      if (!p.report.fullyRestored) {
+        const bad = p.report.items.filter((i) => i.result === "failed" || i.result === "skipped");
+        pushActivity("error", `Networking not fully restored: ${bad.map((i) => i.label).join(", ")}`, undefined, p.report.at);
+      }
+    }),
     on("rulesUpdated", (p) => {
       if (!p.ok && p.status.lastError) pushActivity("warn", p.status.lastError.message, p.status.lastError);
     }),
@@ -124,6 +136,7 @@ export async function startStore() {
     nodes: nodes.status === "ok" ? nodes.data : state.nodes,
     helper: helper.status === "ok" ? helper.data : state.helper,
     recovery: status.status === "ok" ? status.data.lastRecovery : null,
+    restore: status.status === "ok" ? status.data.lastRestore : null,
   });
 }
 
@@ -136,6 +149,12 @@ export function useApp<T>(select: (s: AppState) => T): T {
     () => select(state),
   );
 }
+
+/**
+ * True while networking is not back to normal after a restore (SPEC §2.7, §9.10).
+ * Takes precedence over every other popover state except an engaged kill switch.
+ */
+export const selectNotRestored = (s: AppState): boolean => s.restore !== null && !s.restore.fullyRestored;
 
 /** The most recent failover reason or error, for the popover's one-line slot. */
 export const selectLastEvent = (s: AppState): Activity | null => s.activity[0] ?? null;

@@ -25,6 +25,7 @@ function bridgeError(e: unknown): AppError {
     recoverable: true,
     fields: [],
     detail: `IPC: ${e instanceof Error ? e.message : String(e)}`,
+    restoreReport: null,
   };
 }
 
@@ -51,6 +52,7 @@ const pendingNotImplemented = async (): Promise<Result<null>> => ({
     recoverable: true,
     fields: [],
     detail: "PENDING REQ-1: window commands are not in SPEC yet",
+    restoreReport: null,
   },
 });
 

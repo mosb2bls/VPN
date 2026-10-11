@@ -1,7 +1,7 @@
 # EdgeClient — UI notes
 
 Owner: UI agent. Approved design decisions, tokens and frontend structure.
-Built against **SPEC v0.2.0**.
+Built against **SPEC v0.3.0**.
 
 ## 1. Approved decisions (U0)
 
@@ -13,6 +13,7 @@ Built against **SPEC v0.2.0**.
 | D4 | Failover between two nodes of the **same protocol**: the dot stays on its tick; only the node name and badge change. |
 | D5 | Colour: ink `#161512`, paper `#F2EEE5` (printed values from the references). Accents sampled: cobalt `#2439BC`, vermilion `#D34F2E`, mustard `#E7C24E`. |
 | D6 | Contrast: vermilion for dot / fills / borders only; `#B8401F` where red text is unavoidable (4.8:1). `ink-muted` ≈ 65 % ink = `#625F58` (≈ 5:1). Mustard only as a fill with ink text. |
+| D8 | **NOT RESTORED** (partial restore, SPEC §2.7): shown whenever `lastRestore.fullyRestored` is false and the app is not proxying; never looks like OFF. Lists each failed/skipped item, offers Retry (Restore networking) and explains `--restore-networking`. Only an engaged kill switch (BLOCKED) ranks above it. |
 | D7 | Popover state list: OFF, CONNECTING, CONNECTED, DEGRADED, FAILING OVER, RECONNECTING, DIRECT, DISCONNECTING, RECOVERING, ERROR, BLOCKED (`killSwitchActive`), HELPER MISSING (TUN + helper not installed). |
 
 ## 2. Frontend structure
@@ -55,6 +56,9 @@ The mock implements every SPEC command and event. Dev page controls:
 - **Outcomes**: result of connect, reconnect, restore, helper install, rules update,
   QR import, clipboard contents; per-node health (ok / flaky / fail).
 - **Errors**: arm a one-shot error code on any command; raise `errorRaised` with any code.
+- **Next restore (per item)**: make any of the six restore items fail or be skipped
+  on the next disconnect / Restore networking / launch recovery. Scenarios
+  `NOT RESTORED · TUN` / `· proxy` snap straight into a partial restore.
 - **Stub mode**: behave like the current backend (B1) — stubbed commands return
   `NOT_IMPLEMENTED`.
 - **Event monitor**: every event with its payload (traffic stats omitted).

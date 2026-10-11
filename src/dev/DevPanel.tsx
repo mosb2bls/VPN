@@ -1,7 +1,7 @@
 // Dev state switcher: drives the mock backend into any state, event or error.
 // Only rendered when the mock is active.
 import { useEffect, useState, useSyncExternalStore } from "react";
-import type { ErrorCode } from "../api/bindings";
+import type { ErrorCode, RestoreItemKind } from "../api/bindings";
 import type { CommandName } from "../api/types";
 import { ALL_ERROR_CODES, SAMPLE_LINKS, SCENARIOS, mockEngine, type DevConfig, type NodeHealth } from "../api/mock";
 import { commands } from "../api/client";
@@ -14,6 +14,7 @@ function useDev(): DevConfig {
   );
 }
 
+const RESTORE_KINDS: RestoreItemKind[] = ["tun_session", "routes", "dns", "ipv6", "system_proxy", "firewall"];
 const COMMAND_NAMES = Object.keys(commands) as CommandName[];
 
 function Select<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: readonly T[]; onChange: (v: T) => void }) {
@@ -101,7 +102,25 @@ export function DevPanel() {
         <h4>Outcomes</h4>
         <Select label="connect" value={dev.connectOutcome} options={["ok", "CORE_START_FAILED", "PORT_IN_USE", "DNS_BOOTSTRAP_FAILED", "SYSTEM_PROXY_SET_FAILED", "TUN_START_FAILED", "KILL_SWITCH_FAILED", "NODE_AUTH_FAILED", "CORE_BINARY_MISSING"] as const} onChange={(v) => mockEngine.setDev({ connectOutcome: v })} />
         <Select label="reconnect" value={dev.reconnectOutcome} options={["recover", "give_up"] as const} onChange={(v) => mockEngine.setDev({ reconnectOutcome: v })} />
-        <Select label="restore" value={dev.restoreOutcome} options={["ok", "incomplete"] as const} onChange={(v) => mockEngine.setDev({ restoreOutcome: v })} />
+        <h4>Next restore (per item)</h4>
+        {RESTORE_KINDS.map((k) => (
+          <Select<"ok" | "failed" | "skipped">
+            key={k}
+            label={k}
+            value={dev.restoreFailures[k] ?? "ok"}
+            options={["ok", "failed", "skipped"]}
+            onChange={(v) => {
+              const { [k]: _, ...rest } = dev.restoreFailures;
+              mockEngine.setDev({ restoreFailures: v === "ok" ? rest : { ...rest, [k]: v } });
+            }}
+          />
+        ))}
+        <div className="dev-grid">
+          <button onClick={() => mockEngine.setDev({ restoreFailures: {} })}>all clean</button>
+          <button onClick={() => mockEngine.setDev({ restoreFailures: { dns: "failed" } })}>DNS fails</button>
+          <button onClick={() => mockEngine.setDev({ restoreFailures: { tun_session: "skipped", routes: "skipped", firewall: "skipped" } })}>helper unreachable</button>
+        </div>
+        <p className="dev-hint">Items the app never changed report “not needed” regardless.</p>
         <Select label="helper install" value={dev.helperInstallOutcome} options={["ok", "HELPER_INSTALL_CANCELLED", "HELPER_INSTALL_FAILED"] as const} onChange={(v) => mockEngine.setDev({ helperInstallOutcome: v })} />
         <Select label="rules update" value={dev.rulesOutcome} options={["changed", "unchanged", "RULES_DOWNLOAD_FAILED", "RULES_VALIDATION_FAILED"] as const} onChange={(v) => mockEngine.setDev({ rulesOutcome: v })} />
         <Select label="QR import" value={dev.qrOutcome} options={["ok", "QR_NOT_FOUND", "QR_IMAGE_UNREADABLE", "QR_TOO_MANY_CODES"] as const} onChange={(v) => mockEngine.setDev({ qrOutcome: v })} />

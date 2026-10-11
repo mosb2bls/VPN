@@ -283,6 +283,7 @@ function Logs() {
       <pre className="dbg-pre dbg-logs">
         {logs.map((l) => `${l.ts.slice(11, 19)} ${l.level.padEnd(5)} ${l.source.padEnd(6)} ${l.message}`).join("\n") || "(no log entries)"}
       </pre>
+      <RestoreItems />
       <h4>Activity (store)</h4>
       <ul className="dbg-activity">
         {activity.map((a) => (
@@ -291,6 +292,29 @@ function Logs() {
           </li>
         ))}
       </ul>
+    </>
+  );
+}
+
+function RestoreItems() {
+  const restore = useApp((s) => s.restore);
+  if (!restore) return <h4>Last restore: none</h4>;
+  return (
+    <>
+      <h4>
+        Last restore ({restore.trigger}, {restore.at.slice(11, 19)}) — {restore.fullyRestored ? "complete" : "INCOMPLETE"}
+      </h4>
+      <table className="dbg-table">
+        <tbody>
+          {restore.items.map((i) => (
+            <tr key={i.kind}>
+              <td>{i.label}</td>
+              <td className="dbg-mono">{i.result}</td>
+              <td>{i.errorMessage ?? i.action}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </>
   );
 }
