@@ -1,6 +1,6 @@
 # EdgeClient — Backend ↔ UI Interface Specification
 
-**Spec version:** 1.2.0
+**Spec version:** 1.2.1
 **Status:** approved; includes REQ-1 to REQ-4 (Phase B1). "1.0.0" marks a breaking change, not feature completeness — most commands are still stubs.
 **Generated bindings:** `src/api/bindings.ts` (from `src-tauri/src/api/*`, via tauri-specta `=2.0.0-rc.25`)
 
@@ -12,6 +12,7 @@ the disagreement is a backend bug — file a REQ.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.2.1 | 2026-10-12 | **Clarification / tightened import (B2.5):** VLESS `spx` (spiderX) is now **rejected** if non-empty and `VlessForm.spiderX` must be null — sing-box 1.14 has no spiderX option (previously accepted and would have been ignored). §6 now names the exact resolvers and routing order (ADR-0003). No type changes. |
 | 1.2.0 | 2026-10-12 | **Additive (owner-approved):** event `popoverHidden` (payload `null`, to `popover` only), emitted every time the backend hides the popover, whatever the cause (§2.8). |
 | 1.1.2 | 2026-10-12 | **Behaviour (B2.4):** `get_app_info().coreVersion` now returns the pinned sing-box version (`"1.14.3"`); `CORE_BINARY_MISSING` / `CORE_CHECKSUM_MISMATCH` semantics clarified (§7). No type changes. |
 | 1.1.1 | 2026-10-12 | **Behaviour/clarification (B2.3):** `import_qr_image` is real (local decode, limits in §2.1); `statusChanged` is now also emitted whenever import / add / delete changes the selected node. No type changes. |
@@ -142,12 +143,13 @@ name (decoded, whitespace collapsed, max 64 chars; default `HY2 <host>` /
 | `fp` | one of `chrome firefox edge safari 360 qq ios android random randomized`; default `chrome` |
 | `pbk` | required, base64url of 32 bytes |
 | `sid` | 0–16 hex chars, even length; may be empty |
-| `spx` | optional (decoded) |
+| `spx` | **rejected** if non-empty (sing-box has no REALITY spiderX); empty = ignored |
 | `alpn` | optional comma list |
 | `pqv` | rejected if non-empty (post-quantum REALITY not supported) |
 
-Manual form: the same field rules apply. `Hy2Form.pinSha256` must be `null` in this
-version (non-null → `VALIDATION_FAILED`, field `pinSha256`, code `FIELD_INVALID`).
+Manual form: the same field rules apply. `Hy2Form.pinSha256` and `VlessForm.spiderX`
+must be `null` in this version (non-null → `VALIDATION_FAILED`, field `pinSha256` /
+`spiderX`, code `FIELD_INVALID`). `VlessDetails.spiderX` is always `null`.
 
 ### 2.2 Connection
 
@@ -458,7 +460,8 @@ Transitions (trigger → next state):
 ### 6.1 Routing modes (default `rule`)
 
 - **rule:** `geoip-cn`, `geosite-cn` and private/LAN ranges → direct; everything else →
-  proxy.
+  proxy. In system-proxy mode `geoip-cn` only applies when the app connects to an IP
+  (domains are classified by `geosite-cn`), see ADR-0003.
 - **global:** everything → proxy, except the always-direct set below.
 - **direct:** no core, no proxy, normal connectivity; kill switch off (state `direct`).
 
@@ -484,7 +487,11 @@ in system proxy mode **not controllable** (see Notes for UI).
 | Proxied domains | DoH (Cloudflare / Google) **through the proxy** | DoH **through the proxy** |
 | Proxy server hostname | Bootstrap resolver, direct, never through the tunnel (skipped for IP literals) | same |
 
-Exact resolvers and transports are fixed in the B2 DNS ADR after testing.
+Resolvers (ADR-0003): proxied = Cloudflare DoH `1.1.1.1`; Mainland direct = AliDNS DoH
+`223.5.5.5`; Overseas direct = Quad9 DoH `9.9.9.9`; bootstrap = the profile's direct
+resolver (separate entry, direct); LAN names (`.local`, `.lan`, `.home.arpa`,
+`.localdomain`, `.internal`) = system resolver. AAAA queries get an empty answer.
+**Untested** on real networks; AliDNS DoH may be replaced by UDP if unreliable.
 
 ### 6.3 Fake-IP (TUN only)
 

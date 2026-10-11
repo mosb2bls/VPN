@@ -1,0 +1,209 @@
+{
+  "dns": {
+    "final": "dns-proxy",
+    "rules": [
+      {
+        "action": "predefined",
+        "query_type": [
+          "AAAA"
+        ],
+        "rcode": "NOERROR"
+      },
+      {
+        "action": "route",
+        "domain_suffix": [
+          "local",
+          "lan",
+          "home.arpa",
+          "localdomain",
+          "internal"
+        ],
+        "server": "dns-local"
+      }
+    ],
+    "servers": [
+      {
+        "detour": "proxy",
+        "server": "1.1.1.1",
+        "tag": "dns-proxy",
+        "tls": {
+          "enabled": true,
+          "server_name": "cloudflare-dns.com"
+        },
+        "type": "https"
+      },
+      {
+        "server": "9.9.9.9",
+        "tag": "dns-direct",
+        "tls": {
+          "enabled": true,
+          "server_name": "dns.quad9.net"
+        },
+        "type": "https"
+      },
+      {
+        "server": "9.9.9.9",
+        "tag": "dns-bootstrap",
+        "tls": {
+          "enabled": true,
+          "server_name": "dns.quad9.net"
+        },
+        "type": "https"
+      },
+      {
+        "tag": "dns-local",
+        "type": "local"
+      }
+    ],
+    "strategy": "ipv4_only"
+  },
+  "experimental": {
+    "clash_api": {
+      "external_controller": "127.0.0.1:17891",
+      "secret": "FAKE-controller-secret"
+    }
+  },
+  "inbounds": [
+    {
+      "listen": "127.0.0.1",
+      "listen_port": 17890,
+      "tag": "mixed-in",
+      "type": "mixed"
+    }
+  ],
+  "log": {
+    "level": "warn",
+    "timestamp": true
+  },
+  "outbounds": [
+    {
+      "default": "node-a",
+      "interrupt_exist_connections": true,
+      "outbounds": [
+        "node-a",
+        "node-b",
+        "node-c"
+      ],
+      "tag": "proxy",
+      "type": "selector"
+    },
+    {
+      "domain_resolver": "dns-bootstrap",
+      "password": "FAKE-pass",
+      "server": "proxy.example.com",
+      "server_port": 24443,
+      "tag": "node-a",
+      "tls": {
+        "alpn": [
+          "h3"
+        ],
+        "enabled": true,
+        "insecure": false,
+        "server_name": "proxy.example.com"
+      },
+      "type": "hysteria2"
+    },
+    {
+      "down_mbps": 100,
+      "obfs": {
+        "password": "FAKE-obfs",
+        "type": "salamander"
+      },
+      "password": "FAKE-pass",
+      "server": "203.0.113.7",
+      "server_ports": [
+        "443:443",
+        "20000:30000"
+      ],
+      "tag": "node-b",
+      "tls": {
+        "alpn": [
+          "h3"
+        ],
+        "enabled": true,
+        "insecure": false
+      },
+      "type": "hysteria2",
+      "up_mbps": 50
+    },
+    {
+      "flow": "xtls-rprx-vision",
+      "server": "203.0.113.7",
+      "server_port": 443,
+      "tag": "node-c",
+      "tls": {
+        "enabled": true,
+        "reality": {
+          "enabled": true,
+          "public_key": "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBE",
+          "short_id": "0123abcd"
+        },
+        "server_name": "www.example.org",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        }
+      },
+      "type": "vless",
+      "uuid": "00000000-0000-4000-8000-0000000000aa"
+    },
+    {
+      "domain_resolver": "dns-direct",
+      "tag": "direct",
+      "type": "direct"
+    }
+  ],
+  "route": {
+    "default_domain_resolver": "dns-bootstrap",
+    "final": "proxy",
+    "rule_set": [
+      {
+        "format": "binary",
+        "path": "/rules/geosite-cn.srs",
+        "tag": "geosite-cn",
+        "type": "local"
+      },
+      {
+        "format": "binary",
+        "path": "/rules/geoip-cn.srs",
+        "tag": "geoip-cn",
+        "type": "local"
+      }
+    ],
+    "rules": [
+      {
+        "action": "sniff"
+      },
+      {
+        "action": "hijack-dns",
+        "protocol": "dns"
+      },
+      {
+        "action": "route",
+        "ip_cidr": [
+          "127.0.0.0/8",
+          "::1/128"
+        ],
+        "outbound": "direct"
+      },
+      {
+        "action": "reject",
+        "ip_is_private": true
+      },
+      {
+        "action": "reject",
+        "domain_suffix": [
+          "local",
+          "lan",
+          "home.arpa",
+          "localdomain",
+          "internal"
+        ]
+      },
+      {
+        "action": "reject",
+        "ip_version": 6
+      }
+    ]
+  }
+}

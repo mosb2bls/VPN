@@ -17,6 +17,7 @@ pub mod link;
 pub mod qr;
 pub mod restore;
 pub mod secret;
+pub mod singbox;
 pub mod validate;
 
 pub use error_code::ErrorCode;

@@ -11,6 +11,7 @@ publish.workspace = true
 specta = ["dep:specta"]
 
 [dependencies]
+serde_json.workspace = true
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 percent-encoding = "2"
@@ -20,4 +21,4 @@ specta = { workspace = true, optional = true }
 
 [dev-dependencies]
 qrcode = "0.14.1"
-serde_json.workspace = true
+tempfile = "3"

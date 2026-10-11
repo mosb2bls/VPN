@@ -131,10 +131,11 @@ fn vless(f: &VlessForm, existing: Option<&NodeSecrets>, errs: &mut Vec<FieldErro
         check(errs, "sni", validate::validate_sni(&f.sni)).unwrap_or_default()
     };
     let fingerprint = check(errs, "fingerprint", validate::validate_fingerprint(&f.fingerprint)).unwrap_or_default();
-    let spider_x = f.spider_x.as_deref().map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
-    if spider_x.as_ref().is_some_and(|s| s.chars().count() > 256) {
-        errs.push(FieldError::new("spiderX", ErrorCode::FieldTooLong));
+    // Not supported by the sing-box core (SPEC §2.1.1): must be null/empty.
+    if f.spider_x.as_deref().is_some_and(|s| !s.trim().is_empty()) {
+        errs.push(FieldError::new("spiderX", ErrorCode::FieldInvalid));
     }
+    let spider_x = None;
     let ex = existing.cloned().unwrap_or_default();
     let uuid = secret(errs, "uuid", &f.uuid, ex.uuid.as_ref(), true, false, validate::validate_uuid);
     let public_key =

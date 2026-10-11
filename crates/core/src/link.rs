@@ -437,7 +437,13 @@ fn parse_vless(rest: &str) -> Result<ParsedLink, LinkError> {
         _ => return Err(LinkError::param(ErrorCode::LinkMissingParam, "pbk")),
     };
     let short_id = field(validate::validate_short_id(get("sid").unwrap_or("")), "sid")?;
-    let spider_x = get("spx").filter(|s| !s.is_empty()).map(str::to_string);
+    // sing-box 1.14 REALITY has no spiderX option (verified: `sing-box check`
+    // rejects `reality.spider_x`), so a non-empty spx cannot be honoured.
+    if get("spx").is_some_and(|v| !v.is_empty()) {
+        return Err(LinkError::param(ErrorCode::LinkUnsupportedParam, "spx")
+            .because("REALITY spiderX is not supported by the sing-box core."));
+    }
+    let spider_x = None;
     let alpn = match get("alpn") {
         None => vec![],
         Some(a) => {
@@ -610,11 +616,11 @@ mod tests {
 
     #[test]
     fn vless_accepts_tcp_alias_defaults_and_noop_params() {
-        let q = format!("type=tcp&headerType=none&encryption=none&security=reality&sni=www.example.org&pbk={}&flow=xtls-rprx-vision&spx=%2F&pqv=", pbk());
+        let q = format!("type=tcp&headerType=none&encryption=none&security=reality&sni=www.example.org&pbk={}&flow=xtls-rprx-vision&spx=&pqv=", pbk());
         let c = vl(&vless(&q));
         assert_eq!(c.fingerprint, "chrome"); // default when fp omitted
         assert_eq!(c.short_id.expose(), ""); // sid may be empty
-        assert_eq!(c.spider_x.as_deref(), Some("/"));
+        assert!(c.spider_x.is_none()); // empty spx is a no-op
     }
 
     #[test]
@@ -639,6 +645,7 @@ mod tests {
         assert_eq!(err(&replace("sid=0123abcd", "sid=xyz")), (ErrorCode::LinkInvalidValue, Some("sid".into())));
         assert_eq!(err(&with("encryption=mlkem768x25519plus")), (ErrorCode::LinkUnsupportedParam, Some("encryption".into())));
         assert_eq!(err(&with("pqv=AAAA")), (ErrorCode::LinkUnsupportedParam, Some("pqv".into())));
+        assert_eq!(err(&with("spx=%2F")), (ErrorCode::LinkUnsupportedParam, Some("spx".into())));
         assert_eq!(err(&with("headerType=http")), (ErrorCode::LinkUnsupportedParam, Some("headerType".into())));
         assert_eq!(err(&with("packetEncoding=xudp")), (ErrorCode::LinkUnsupportedParam, Some("packetEncoding".into())));
         assert_eq!(err(&format!("vless://not-a-uuid@203.0.113.7:443?{base}")), (ErrorCode::LinkInvalidValue, Some("uuid".into())));

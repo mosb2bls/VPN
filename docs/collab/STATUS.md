@@ -4,10 +4,10 @@ Each agent edits only its own section.
 
 ## Backend
 
-- **Phase/step:** B2.4 — sing-box 1.14.3 pinned, fetched, verified (done, awaiting owner
-  review). Next: B2.5 sing-box config generation (+ `sing-box check`), then system proxy
-  mode with journal/restore, then the real-server harness.
-- **SPEC version:** 1.1.2 (`docs/SPEC.md`, `src/api/bindings.ts`)
+- **Phase/step:** B2.5 — sing-box config generation (done, awaiting owner review). Next:
+  B2.6 bundled rule-sets; B2.7 system proxy mode (core process, Clash API, OS proxy +
+  journal/restore); B2.8 real-server harness.
+- **SPEC version:** 1.2.1 (`docs/SPEC.md`, `src/api/bindings.ts`)
 - **Core:** `npm run fetch-core` installs the verified binary into `src-tauri/binaries/`
   (gitignored). Not required to build; required to connect (B2.5+).
 - **Real:** node list / import (text + clipboard + QR image) / add / update / delete / reorder /

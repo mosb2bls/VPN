@@ -9,7 +9,7 @@ pub mod types;
 use tauri_specta::{collect_commands, collect_events, Builder};
 
 /// Must equal the version at the top of `docs/SPEC.md` (checked by a test).
-pub const SPEC_VERSION: &str = "1.2.0";
+pub const SPEC_VERSION: &str = "1.2.1";
 
 /// Path of the generated bindings, relative to the `src-tauri` crate root.
 pub const BINDINGS_PATH: &str = "../src/api/bindings.ts";
