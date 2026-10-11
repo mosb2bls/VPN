@@ -722,7 +722,8 @@ export class MockEngine {
       added.push(p.node);
     });
     if (added.length) {
-      if (!this.status.selectedNodeId) this.status = { ...this.status, selectedNodeId: added[0].id };
+      // SPEC 1.1.1: a selection change from import also emits statusChanged.
+      if (!this.status.selectedNodeId) this.setStatus({ selectedNodeId: added[0].id });
       this.emitNodes();
       this.log("info", "app", `Imported ${added.length} node(s)`);
     }
@@ -830,7 +831,9 @@ export class MockEngine {
 
     importQrImage: (source) =>
       this.call("importQrImage", async () => {
-        await this.sleep(600);
+        // SPEC 1.1.1: path must be an absolute regular file; bytes may be base64 or a data: URL.
+        if (source.kind === "path" && !/^(\/|[A-Za-z]:\\)/.test(source.path)) return fail(appError("QR_IMAGE_UNREADABLE"));
+        await this.sleep(1400); // decoding can take a few seconds — the UI shows a busy state
         if (this.dev.qrOutcome !== "ok") return fail(appError(this.dev.qrOutcome, { detail: `source: ${source.kind}` }));
         const n = this.fixtures.length + 1;
         return ok(
@@ -855,7 +858,7 @@ export class MockEngine {
         )
           return fail(appError("NODE_DUPLICATE"));
         this.fixtures.push(fx);
-        if (!this.status.selectedNodeId) this.status = { ...this.status, selectedNodeId: fx.node.id };
+        if (!this.status.selectedNodeId) this.setStatus({ selectedNodeId: fx.node.id });
         this.emitNodes();
         return ok(clone(fx.node));
       }),

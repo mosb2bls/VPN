@@ -26,7 +26,7 @@ Each agent edits only its own section.
 ## UI
 
 - **Phase/step:** U2.3 — quick node switcher sheet (awaiting owner review)
-- **SPEC version:** 1.1.0 (`Node.secretMissing` handled; empty node list has an empty state)
+- **SPEC version:** 1.1.1 (QR import real; selection changes also arrive as `statusChanged`)
 - **Real / stubbed:** `src/api/client.ts` wraps `bindings.ts` (real inside Tauri, mock in a
   browser; `VITE_USE_MOCK` overrides). Mock simulates every SPEC command, event and error
   code. The `popover` window renders the designed popover (`src/popover/`: all states,

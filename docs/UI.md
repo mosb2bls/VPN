@@ -1,7 +1,7 @@
 # EdgeClient — UI notes
 
 Owner: UI agent. Approved design decisions, tokens and frontend structure.
-Built against **SPEC v1.1.0**.
+Built against **SPEC v1.1.1**.
 
 ## 1. Approved decisions (U0)
 
