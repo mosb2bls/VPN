@@ -63,6 +63,12 @@
 }
 
 @layer base {
+  /* Each window's content fills the whole window (no blank area below). */
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
   html {
     color: var(--color-ink);
     background: var(--color-paper);

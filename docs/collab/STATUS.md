@@ -28,11 +28,11 @@ Each agent edits only its own section.
 
 ## UI
 
-- **Phase/step:** U2.4.1 — motion moment 1: popover open (awaiting owner review)
-- **SPEC version:** 1.1.1 (QR import real; selection changes also arrive as `statusChanged`)
+- **Phase/step:** U2.4.2 — motion moment 2: connect / disconnect (awaiting owner review)
+- **SPEC version:** 1.1.2
 - **Real / stubbed:** `src/api/client.ts` wraps `bindings.ts` (real inside Tauri, mock in a
   browser; `VITE_USE_MOCK` overrides). Mock simulates every SPEC command, event and error
   code. The `popover` window renders the designed popover (`src/popover/`: all states,
   node sheet, open/hide motion); `settings` still renders the U1.1 debug view until U3.
 - **Open requests:** none.
-- **Known issues:** popover inside the real Tauri window not yet checked (`cargo run -p edge-app`).
+- **Known issues:** popover hide → parked content relies on `blur` / `visibilitychange` until a `popoverHidden` event exists (untested on Windows).

@@ -48,3 +48,18 @@ export const openTimeline = {
   contentShift: 6,
   hide: { duration: duration.fast, ease: ease.exit },
 } as const;
+
+/**
+ * Motion moment 2 — connect / disconnect (UI.md §5, D26). The state word is a
+ * one-line counter: the old word slides up and out, the new one slides up
+ * from below into its colour. The sub-line cross-fades; the primary button
+ * cross-fades its label while its fill transitions (CSS, `duration-base`).
+ */
+export const stateTimeline = {
+  wordIn: { duration: duration.slow, ease: ease.enter },
+  wordOut: { duration: duration.fast + 0.04, ease: ease.exit },
+  /** px travelled by the word (clipped by its 32 px line box). */
+  wordShift: 14,
+  sub: { duration: duration.fast, ease: ease.enter },
+  label: { duration: duration.fast, ease: ease.enter },
+} as const;

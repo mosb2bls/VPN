@@ -12,9 +12,9 @@
 //   row  16    last event
 //   row  17    footer: settings · restore networking · quit
 import { useEffect, useState, type ReactNode } from "react";
-import { motion } from "motion/react";
+import { AnimatePresence, motion } from "motion/react";
 import { commands, on, windowLabel } from "../api/client";
-import { openTimeline } from "../design/motion";
+import { openTimeline, stateTimeline as ST } from "../design/motion";
 import type { CaptureMode, ImportResult, RoutingMode, Status } from "../api/bindings";
 import type { Result } from "../api/types";
 import { protocolBadge, rate, since, transport } from "../lib/format";
@@ -80,11 +80,15 @@ export function Popover() {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setHiding("esc");
     window.addEventListener("keydown", onKey);
     // Only the real popover window hides on blur; the dev page must not.
+    // Tray-toggle hides may not blur on macOS; visibilitychange covers those (backend note, SPEC 1.1.2).
     const onBlur = () => windowLabel() === "popover" && setHiding((h) => h ?? "blur");
+    const onVis = () => document.visibilityState === "hidden" && onBlur();
     window.addEventListener("blur", onBlur);
+    document.addEventListener("visibilitychange", onVis);
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("blur", onBlur);
+      document.removeEventListener("visibilitychange", onVis);
     };
   }, []);
 
@@ -161,10 +165,34 @@ export function Popover() {
           <div className="grid h-full grid-cols-1 px-3" style={{ gridTemplateRows: "repeat(17, 24px)" }}>
             {/* rows 1–4 · state */}
             <div className="row-span-4 flex flex-col justify-end gap-1.5 pb-3">
-              <h1 className={`state-word ${TONE_CLASS[view.tone]}`}>{view.word}</h1>
-              <p className={`truncate ${view.subMono ? "label text-ink" : "text-secondary text-ink-muted"}`} title={view.sub}>
-                {view.sub}
-              </p>
+              {/* Motion moment 2: the word behaves like a one-line counter (clipped). */}
+              <h1 className="relative h-8 overflow-hidden" aria-live="polite">
+                <AnimatePresence initial={false}>
+                  <motion.span
+                    key={view.word + view.tone}
+                    className={`state-word absolute inset-x-0 top-0 ${TONE_CLASS[view.tone]}`}
+                    initial={{ y: ST.wordShift, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1, transition: ST.wordIn }}
+                    exit={{ y: -ST.wordShift, opacity: 0, transition: ST.wordOut }}
+                  >
+                    {view.word}
+                  </motion.span>
+                </AnimatePresence>
+              </h1>
+              <div className="relative h-4">
+                <AnimatePresence initial={false}>
+                  <motion.p
+                    key={view.sub}
+                    className={`absolute inset-x-0 top-0 truncate ${view.subMono ? "label text-ink" : "text-secondary text-ink-muted"}`}
+                    title={view.sub}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1, transition: ST.sub }}
+                    exit={{ opacity: 0, transition: ST.sub }}
+                  >
+                    {view.sub}
+                  </motion.p>
+                </AnimatePresence>
+              </div>
             </div>
 
             {/* rows 5–6 · node */}
@@ -194,13 +222,15 @@ export function Popover() {
                 type="button"
                 onClick={() => act(view.primary.action)}
                 disabled={view.primary.disabled}
-                className={`h-10 w-full border border-ink font-display text-[13px] font-[750] tracking-[0.12em] uppercase transition-[transform,background-color,color] duration-fast active:translate-y-px focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cobalt ${
+                className={`h-10 w-full border border-ink font-display text-[13px] font-[750] tracking-[0.12em] uppercase transition-[transform,background-color,color,border-color] duration-base ease-enter active:translate-y-px active:duration-fast focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cobalt ${
                   view.primary.variant === "solid"
                     ? "bg-ink text-paper disabled:border-ink/30 disabled:bg-ink/30"
                     : "bg-transparent text-ink hover:bg-ink/5 disabled:border-ink/30 disabled:text-ink-muted"
                 }`}
               >
-                {view.primary.label}
+                <motion.span key={view.primary.label} className="inline-block" initial={{ opacity: 0, y: 3 }} animate={{ opacity: 1, y: 0 }} transition={ST.label}>
+                  {view.primary.label}
+                </motion.span>
               </button>
             </div>
 

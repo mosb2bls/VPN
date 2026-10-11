@@ -1,7 +1,7 @@
 # EdgeClient — UI notes
 
 Owner: UI agent. Approved design decisions, tokens and frontend structure.
-Built against **SPEC v1.1.1**.
+Built against **SPEC v1.1.2**.
 
 ## 1. Approved decisions (U0)
 
@@ -208,8 +208,22 @@ Tokens: `openTimeline` in `src/design/motion.ts`. Plays on mount and on every
 | Content: opacity 0 → 1, y 6 → 0 px | 100 ms | 280 ms | enter |
 | Hide (Esc): opacity → 0, then `hidePopover()` | 0 | 120 ms | exit |
 
-On window blur (the OS hides the popover) the content is parked at opacity 0 instantly, so
-the next show starts blank instead of flashing the previous frame.
+On window blur or `visibilitychange → hidden` (the OS hides the popover; a tray-toggle hide
+may not blur on macOS) the content is parked at opacity 0 instantly, so the next show starts
+blank instead of flashing the previous frame.
+
+Frame draw direction: one stroke, clockwise from the top-left (approved).
+
+### 2. Connect / disconnect (U2.4.2)
+
+Tokens: `stateTimeline`. Measured OFF → CONNECTING in the browser: complete ≈ 320 ms, no
+overshoot.
+
+| Element | Motion |
+|---|---|
+| State word | One-line counter clipped to its 32 px line: old word slides up 14 px and fades (160 ms, exit); new word rises 14 px → 0 and fades in, already in its new colour (320 ms, enter) |
+| Sub-line (progress text) | Cross-fade on every change (120 ms) |
+| Primary button | Fill / text / border colours transition (200 ms, enter); label cross-fades with a 3 px rise (120 ms); press = 1 px down (120 ms) |
 
 ## 6. Dependencies
 
