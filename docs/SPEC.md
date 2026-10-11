@@ -1,6 +1,6 @@
 # EdgeClient — Backend ↔ UI Interface Specification
 
-**Spec version:** 1.1.2
+**Spec version:** 1.2.0
 **Status:** approved; includes REQ-1 to REQ-4 (Phase B1). "1.0.0" marks a breaking change, not feature completeness — most commands are still stubs.
 **Generated bindings:** `src/api/bindings.ts` (from `src-tauri/src/api/*`, via tauri-specta `=2.0.0-rc.25`)
 
@@ -12,6 +12,7 @@ the disagreement is a backend bug — file a REQ.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.2.0 | 2026-10-12 | **Additive (owner-approved):** event `popoverHidden` (payload `null`, to `popover` only), emitted every time the backend hides the popover, whatever the cause (§2.8). |
 | 1.1.2 | 2026-10-12 | **Behaviour (B2.4):** `get_app_info().coreVersion` now returns the pinned sing-box version (`"1.14.3"`); `CORE_BINARY_MISSING` / `CORE_CHECKSUM_MISMATCH` semantics clarified (§7). No type changes. |
 | 1.1.1 | 2026-10-12 | **Behaviour/clarification (B2.3):** `import_qr_image` is real (local decode, limits in §2.1); `statusChanged` is now also emitted whenever import / add / delete changes the selected node. No type changes. |
 | 1.1.0 | 2026-10-12 | **Additive:** `Node.secretMissing`. **Behaviour (B2.2):** node commands and all preference setters are now real and persisted (§2.9); the two `[placeholder]` nodes are gone (empty list until the user imports). `import_qr_image`, connect/test and OS-level commands are still `NOT_IMPLEMENTED`. |
@@ -304,7 +305,7 @@ routes on the window label.
 
 | Label | Size | Behaviour |
 |---|---|---|
-| `popover` | 340 × 480 logical, fixed | Frameless, **opaque with the native OS shadow** (owner decision), not resizable, always on top, not in the taskbar, visible on all macOS Spaces, first click accepted. Tray icon **left-click toggles** it; it is placed next to the tray icon (below the macOS menu bar; next to the Windows taskbar on whichever edge, on the icon's monitor) and kept fully inside the monitor's work area. **Hides on blur** (losing focus); a tray click within 300 ms of a blur-hide counts as "close", not "reopen". Esc → the UI calls `hide_popover`. File drag-and-drop disabled. |
+| `popover` | 340 × 480 logical, fixed | Frameless, **opaque with the native OS shadow** (owner decision), not resizable, always on top, not in the taskbar, visible on all macOS Spaces, first click accepted. Tray icon **left-click toggles** it; it is placed next to the tray icon (below the macOS menu bar; next to the Windows taskbar on whichever edge, on the icon's monitor) and kept fully inside the monitor's work area. **Hides on blur** (losing focus); a tray click within 300 ms of a blur-hide counts as "close", not "reopen". Esc → the UI calls `hide_popover`. Every hide, for any reason, is followed by `popoverHidden`; a webview `blur` is **not** guaranteed when the tray icon toggles it closed (macOS). File drag-and-drop disabled. |
 | `settings` | 760 × 560, min 640 × 480, resizable | Normal decorations, title "EdgeClient Settings", centred. Close button hides it; the app keeps running in the tray. File drag-and-drop **enabled** (QR image drop → `import_qr_image({kind:"path"})`). |
 
 macOS: the app is a menu-bar (accessory) app — **no Dock icon**; the settings window still
@@ -375,6 +376,7 @@ kebab-case (`status-changed`).
 | `recoveryCompleted` | `{ report: RecoveryReport }` | Launch-time or helper-start recovery finished. Also stored in `Status.lastRecovery`. |
 | `settingsSectionRequested` | `{ section: SettingsSection }` | **To `settings` only.** `open_settings(section)` or tray (REQ-1). |
 | `popoverShown` | `null` | **To `popover` only.** Each time the popover is shown from the tray (REQ-1). |
+| `popoverHidden` | `null` | **To `popover` only.** Each time the backend hides the popover — blur, tray toggle, `hide_popover`, `open_settings`, close request. Not sent if already hidden. Use as the primary "parked" signal; blur is not guaranteed on a tray toggle (§2.8). |
 | `restoreReportChanged` | `{ report: RestoreReport }` | `Status.lastRestore` changed: any restore finished, or an incomplete report was reloaded at launch (REQ-4, §2.7). |
 | `errorRaised` | `{ error: AppError }` | Background error not tied to a command. `recoverable: false` → user action needed. |
 

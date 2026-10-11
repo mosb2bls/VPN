@@ -78,6 +78,7 @@ export const events = {
 	healthCheck: makeEvent<HealthCheck>("health-check"),
 	helperStatusChanged: makeEvent<HelperStatusChanged>("helper-status-changed"),
 	nodesChanged: makeEvent<NodesChanged>("nodes-changed"),
+	popoverHidden: makeEvent<PopoverHidden>("popover-hidden"),
 	popoverShown: makeEvent<PopoverShown>("popover-shown"),
 	recoveryCompleted: makeEvent<RecoveryCompleted>("recovery-completed"),
 	restoreReportChanged: makeEvent<RestoreReportChanged>("restore-report-changed"),
@@ -88,7 +89,7 @@ export const events = {
 };
 
 /* Constants */
-export const SPEC_VERSION = "1.1.2" as const;
+export const SPEC_VERSION = "1.2.0" as const;
 
 /* Types */
 /**  The node carrying traffic changed. */
@@ -341,6 +342,13 @@ export type NodesChanged = {
 };
 
 export type Platform = "macos" | "windows" | "other";
+
+/**
+ *  Sent to the `popover` window only, every time the backend hides it — on
+ *  blur, tray-icon toggle, `hide_popover`, `open_settings` or a close request.
+ *  Not sent if it was already hidden. (Owner-approved, SPEC 1.2.0)
+ */
+export type PopoverHidden = null;
 
 /**  Sent to the `popover` window only, each time it is shown. (REQ-1) */
 export type PopoverShown = null;

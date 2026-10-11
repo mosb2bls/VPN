@@ -150,3 +150,9 @@ pub struct SettingsSectionRequested {
 /// Sent to the `popover` window only, each time it is shown. (REQ-1)
 #[derive(Serialize, Deserialize, Type, Event, Debug, Clone)]
 pub struct PopoverShown;
+
+/// Sent to the `popover` window only, every time the backend hides it — on
+/// blur, tray-icon toggle, `hide_popover`, `open_settings` or a close request.
+/// Not sent if it was already hidden. (Owner-approved, SPEC 1.2.0)
+#[derive(Serialize, Deserialize, Type, Event, Debug, Clone)]
+pub struct PopoverHidden;

@@ -15,7 +15,7 @@ use tauri_specta::Event;
 
 use crate::api::commands::{self, AppState};
 use crate::api::error::{ApiResult, AppError, ErrorCode};
-use crate::api::events::{ErrorRaised, PopoverShown, SettingsSectionRequested};
+use crate::api::events::{ErrorRaised, PopoverHidden, PopoverShown, SettingsSectionRequested};
 use crate::api::types::{CaptureMode, ConnectionState, RoutingMode, SettingsSection};
 
 pub const POPOVER: &str = "popover";
@@ -46,14 +46,14 @@ pub fn setup(app: &mut tauri::App) -> tauri::Result<()> {
         let win = w.clone();
         w.on_window_event(move |e| match e {
             WindowEvent::Focused(false) if win.is_visible().unwrap_or(false) => {
-                let _ = win.hide();
+                let _ = hide_popover_window(&h, &win);
                 if let Ok(mut t) = h.state::<ShellState>().last_blur_hide.lock() {
                     *t = Some(Instant::now());
                 }
             }
             WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close();
-                let _ = win.hide();
+                let _ = hide_popover_window(&h, &win);
             }
             _ => {}
         });
@@ -101,7 +101,7 @@ fn window(app: &AppHandle, label: &str) -> ApiResult<WebviewWindow> {
 fn toggle_popover(app: &AppHandle, icon: Rect) {
     let Ok(w) = window(app, POPOVER) else { return };
     if w.is_visible().unwrap_or(false) {
-        let _ = w.hide();
+        let _ = hide_popover_window(app, &w);
         return;
     }
     let just_hidden = app
@@ -147,12 +147,24 @@ fn place_popover(app: &AppHandle, w: &WebviewWindow, icon: Rect) {
 
 pub fn hide_popover(app: &AppHandle) -> ApiResult<()> {
     let w = window(app, POPOVER)?;
-    w.hide().map_err(|e| AppError::new(ErrorCode::WindowUnavailable).with_detail(e.to_string()))
+    hide_popover_window(app, &w)
+}
+
+/// The only place the popover is hidden: hides it if visible and then emits
+/// `popoverHidden` to the popover, whatever the cause (blur, tray toggle,
+/// `hide_popover`, `open_settings`, close request). No-op if already hidden.
+fn hide_popover_window(app: &AppHandle, w: &WebviewWindow) -> ApiResult<()> {
+    if !w.is_visible().unwrap_or(false) {
+        return Ok(());
+    }
+    w.hide().map_err(|e| AppError::new(ErrorCode::WindowUnavailable).with_detail(e.to_string()))?;
+    let _ = PopoverHidden.emit_to(app, POPOVER);
+    Ok(())
 }
 
 pub fn open_settings(app: &AppHandle, section: Option<SettingsSection>) -> ApiResult<()> {
     if let Ok(p) = window(app, POPOVER) {
-        let _ = p.hide();
+        let _ = hide_popover_window(app, &p);
     }
     let w = window(app, SETTINGS)?;
     let fail = |e: tauri::Error| AppError::new(ErrorCode::WindowUnavailable).with_detail(e.to_string());
