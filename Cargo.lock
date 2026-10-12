@@ -1064,6 +1064,7 @@ name = "edge-helper"
 version = "0.1.0"
 dependencies = [
  "edge-core",
+ "edge-winsys",
  "libc",
  "serde",
  "serde_json",

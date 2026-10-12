@@ -1,5 +1,5 @@
-//! App ↔ privileged-helper protocol (macOS Unix socket; Windows named pipe
-//! later). One JSON request per line, one JSON response per line.
+//! App ↔ privileged-helper protocol (macOS Unix socket; Windows named pipe,
+//! ADR-0007). One JSON request per line, one JSON response per line.
 //!
 //! The app never sends a sing-box config: it sends a [`TunProfile`] (nodes,
 //! modes) and the helper builds and validates the config itself with
@@ -24,6 +24,12 @@ pub const HELPER_SINGBOX: &str = "/Library/PrivilegedHelperTools/io.github.mosb2
 pub const HELPER_DATA: &str = "/Library/Application Support/io.github.mosb2bls.edgeclient.helper";
 pub const LAUNCHD_LABEL: &str = "io.github.mosb2bls.edgeclient.helper";
 pub const LAUNCHD_PLIST: &str = "/Library/LaunchDaemons/io.github.mosb2bls.edgeclient.helper.plist";
+
+/// Windows service name and named pipe (ADR-0007). Install / data folders are
+/// known-folder based (`edge_winsys::paths`).
+pub const WIN_SERVICE_NAME: &str = "io.github.mosb2bls.edgeclient.helper";
+pub const WIN_SERVICE_DISPLAY: &str = "EdgeClient Helper";
+pub const WIN_PIPE_NAME: &str = r"\\.\pipe\io.github.mosb2bls.edgeclient.helper";
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "protocol", rename_all = "snake_case")]

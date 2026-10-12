@@ -12,14 +12,82 @@
 pub use edge_core::winproxy::WinProxyState;
 
 #[cfg(windows)]
+pub mod elevate;
+#[cfg(windows)]
+pub mod paths;
+#[cfg(windows)]
+pub mod pipe;
+#[cfg(windows)]
+pub mod process;
+#[cfg(windows)]
+pub mod security;
+#[cfg(windows)]
+pub mod service;
+#[cfg(windows)]
+pub mod wfp;
+
+/// Read a NUL-terminated wide string (not freed).
+#[cfg(windows)]
+pub(crate) unsafe fn wide_to_string(p: *const u16) -> String {
+    if p.is_null() {
+        return String::new();
+    }
+    let mut len = 0;
+    while unsafe { *p.add(len) } != 0 {
+        len += 1;
+    }
+    String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(p, len) })
+}
+
+/// NUL-terminated UTF-16.
+#[cfg(windows)]
+pub(crate) fn wide(s: &str) -> Vec<u16> {
+    s.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+/// Quote one argument so `CommandLineToArgvW` / the MSVC runtime parse it
+/// back unchanged (backslashes are literal except before a quote).
+pub fn quote_arg(arg: &str) -> String {
+    if !arg.is_empty() && !arg.contains([' ', '\t', '\n', '\x0b', '"']) {
+        return arg.to_string();
+    }
+    let mut out = String::from('"');
+    let mut backslashes = 0;
+    for c in arg.chars() {
+        match c {
+            '\\' => backslashes += 1,
+            '"' => {
+                out.extend(std::iter::repeat_n('\\', backslashes * 2 + 1));
+                out.push('"');
+                backslashes = 0;
+            }
+            _ => {
+                out.extend(std::iter::repeat_n('\\', backslashes));
+                out.push(c);
+                backslashes = 0;
+            }
+        }
+    }
+    out.extend(std::iter::repeat_n('\\', backslashes * 2));
+    out.push('"');
+    out
+}
+
+/// A Windows string SID (`S-1-5-21-…`): digits and dashes only, so it is safe
+/// to embed in an SDDL string.
+pub fn valid_sid(s: &str) -> bool {
+    s.len() <= 184
+        && s.strip_prefix("S-1-").is_some_and(|rest| !rest.is_empty() && rest.split('-').all(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit())))
+}
+
+
+#[cfg(windows)]
 mod imp {
     use super::WinProxyState;
     use windows_sys::Win32::Foundation::GlobalFree;
     use windows_sys::Win32::Networking::WinInet::*;
 
-    fn wide(s: &str) -> Vec<u16> {
-        s.encode_utf16().chain(std::iter::once(0)).collect()
-    }
+    use crate::wide;
 
     /// Read a WinINet-allocated wide string and free it.
     unsafe fn take(p: *mut u16) -> String {
@@ -126,5 +194,28 @@ pub fn write_proxy(s: &WinProxyState) -> Result<(), String> {
     {
         let _ = s;
         Err("Windows only".into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quoting_round_trips_msvc_rules() {
+        assert_eq!(quote_arg("install"), "install");
+        assert_eq!(quote_arg(r"C:\Program Files\x.exe"), r#""C:\Program Files\x.exe""#);
+        assert_eq!(quote_arg(r"C:\dir with space\"), r#""C:\dir with space\\""#);
+        assert_eq!(quote_arg(r#"a"b"#), r#""a\"b""#);
+        assert_eq!(quote_arg(""), r#""""#);
+    }
+
+    #[test]
+    fn sid_validation() {
+        assert!(valid_sid("S-1-5-21-1004336348-1177238915-682003330-1001"));
+        assert!(valid_sid("S-1-5-18"));
+        for bad in ["", "S-1-", "S-1-5-", "S-1-5-x", "S-1-5-21)(A;;GA;;;WD)", "s-1-5-18", "S-1-5--1"] {
+            assert!(!valid_sid(bad), "{bad}");
+        }
     }
 }

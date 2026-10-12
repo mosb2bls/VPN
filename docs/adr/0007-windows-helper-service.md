@@ -1,8 +1,9 @@
 # ADR-0007: Privileged helper and kill switch for TUN mode (Windows)
 
-- Status: **proposed** (2026-10-12) — design only, nothing implemented. Implementation is
-  Phase B3.2 and starts once CI builds the Windows app green. Everything here stays
-  **untested** until the owner runs the Windows checklist.
+- Status: **implemented, untested on Windows** (Phase B3.2, 2026-10-12). Compile- and
+  lint-checked for `x86_64-pc-windows-msvc` locally (helper, winsys) and in CI (app); pure
+  parts unit-tested (`edge_core::wfp`, argument quoting, SID validation, pipe DACL).
+  Real behaviour needs the owner's Windows checklist (TESTING.md W-HELPER, W-TUN, W-KILL).
 
 ## Context
 
@@ -12,7 +13,7 @@ and configs it generates itself from a closed request enum; minimal authenticate
 IPC; a journal so a crash or reboot never leaves networking broken; and a kill switch that
 blocks traffic only while the core is down unexpectedly.
 
-## Proposed decisions
+## Decisions
 
 **Service.** `edge-helper.exe` doubles as a Windows service (`serve` subcommand), run by the
 Service Control Manager as LocalSystem with automatic start, so it can recover at boot.
@@ -55,7 +56,7 @@ ships. The config generator is unchanged:
 
 `auto_redirect` is Linux-only and is not used.
 
-**Kill switch: Windows Filtering Platform.** The kill switch is engaged only when the core
+**Kill switch: Windows Filtering Platform** (`edge_core::wfp::plan`, `edge_winsys::wfp`). The kill switch is engaged only when the core
 dies unexpectedly, as with pf on macOS:
 - filters in our own sublayer block IPv4/IPv6 connect and accept at the ALE layers;
 - they permit loopback, DHCP, LAN (if allowed) and the bundled sing-box executable (by app
@@ -72,7 +73,17 @@ and writable by SYSTEM and administrators only. On service start, recovery works
 `recover_at_start` does on macOS: stop a stale core (only if that PID still runs our
 binary) and report what was restored.
 
-## Open questions (resolved during implementation, with tests)
+**Implementation notes.** All Windows FFI is in `crates/winsys` (`windows-sys` only, no C
+toolchain), shared by the helper and the app. The helper's session logic is shared with
+macOS; per-OS parts are in `crates/helper/src/sys/`. The pipe DACL grants the user
+`0x0012008B` (read + write data) but not `FILE_APPEND_DATA`, which on a pipe means "create
+pipe instance". The app verifies the pipe server's image path before sending anything. An
+elevated install has no console the app can read, so the helper writes its error text to a
+`--report` file that the app reads and deletes. sing-box and its child tools are started
+with `CREATE_NO_WINDOW`. Also fixed for system-proxy mode: a stale core is killed after an
+app crash only if that PID still runs our binary.
+
+## Open questions
 
 - Whether WinINet system-proxy settings must also be cleared when switching to TUN.
   Disconnect already restores them, but a user may switch capture modes mid-session.

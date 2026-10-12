@@ -1,4 +1,4 @@
-//! Unix-socket server. Authentication is twofold: the socket file is owned by
+//! Unix-socket server (macOS). Authentication is twofold: the socket file is owned by
 //! the installing user with mode 0600, and every connection's peer uid
 //! (getpeereid) must be that user or root. Requests are a closed set of
 //! structured operations (`edge_core::helper_proto::Request`); anything else is
@@ -15,7 +15,7 @@ use edge_core::ErrorCode;
 use edge_core::helper_proto::*;
 
 use crate::session::Session;
-use crate::util;
+use crate::{rpc, util};
 
 static STOP: AtomicBool = AtomicBool::new(false);
 
@@ -81,10 +81,7 @@ pub fn serve() -> Result<(), String> {
 }
 
 fn respond(mut s: &UnixStream, r: &Response) {
-    if let Ok(mut line) = serde_json::to_string(r) {
-        line.push('\n');
-        let _ = s.write_all(line.as_bytes());
-    }
+    let _ = s.write_all(&rpc::encode(r));
 }
 
 fn handle(stream: UnixStream, session: &Session, allowed_uid: u32) {
@@ -99,30 +96,8 @@ fn handle(stream: UnixStream, session: &Session, allowed_uid: u32) {
         }
     }
     let mut line = String::new();
-    if BufReader::new((&stream).take(1 << 20)).read_line(&mut line).is_err() || line.trim().is_empty() {
+    if BufReader::new((&stream).take(rpc::MAX_REQUEST)).read_line(&mut line).is_err() || line.trim().is_empty() {
         return;
     }
-    let req: Request = match serde_json::from_str(line.trim()) {
-        Ok(r) => r,
-        Err(_) => {
-            respond(&stream, &Response::Error { code: ErrorCode::InvalidArgument, detail: Some("unknown request".into()) });
-            return;
-        }
-    };
-    let resp = match req {
-        Request::Ping | Request::Status => Response::Ok { state: session.state() },
-        Request::Start { profile } => match session.start(*profile) {
-            Ok(state) => Response::Ok { state },
-            Err((code, detail)) => Response::Error { code, detail },
-        },
-        Request::Stop => match session.stop() {
-            Ok(state) => Response::Ok { state },
-            Err((code, detail)) => Response::Error { code, detail },
-        },
-        Request::Restore => {
-            let (state, items) = session.restore();
-            Response::Restored { state, items }
-        }
-    };
-    respond(&stream, &resp);
+    respond(&stream, &rpc::dispatch(&line, session));
 }

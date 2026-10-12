@@ -154,7 +154,7 @@ fn validate(bin: &Path, staging: &Path) -> Result<(), AppError> {
     for src in &SOURCES {
         let file = staging.join(src.file);
         for (probe, expect) in src.must_match.iter().map(|p| (p, true)).chain(src.must_not_match.iter().map(|p| (p, false))) {
-            let out = std::process::Command::new(bin)
+            let out = crate::core_bin::command(bin)
                 .args(["rule-set", "match", "-f", "binary"])
                 .arg(&file)
                 .arg(probe)
@@ -188,7 +188,7 @@ fn validate(bin: &Path, staging: &Path) -> Result<(), AppError> {
     .map_err(|e| invalid(format!("{e:?}")))?;
     let path = staging.join("check.json");
     std::fs::write(&path, serde_json::to_vec(&cfg).expect("config")).map_err(invalid)?;
-    let out = std::process::Command::new(bin).args(["check", "-c"]).arg(&path).output().map_err(invalid)?;
+    let out = crate::core_bin::command(bin).args(["check", "-c"]).arg(&path).output().map_err(invalid)?;
     if !out.status.success() {
         return Err(invalid(format!("sing-box check: {}", String::from_utf8_lossy(&out.stderr).trim())));
     }

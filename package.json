@@ -14,7 +14,7 @@
     "harness": "cargo run -q -p edge-harness",
     "lint": "eslint src",
     "bundle:mac": "npm run fetch-core && cargo build --release -p edge-helper && node scripts/prepare-bundle.mjs && tauri build --config src-tauri/tauri.bundle.macos.json --bundles dmg",
-    "bundle:win": "npm run fetch-core && tauri build --config src-tauri/tauri.bundle.windows.json --bundles nsis"
+    "bundle:win": "npm run fetch-core && cargo build --release -p edge-helper && node scripts/prepare-bundle.mjs && tauri build --config src-tauri/tauri.bundle.windows.json --bundles nsis"
   },
   "dependencies": {
     "@fontsource-variable/archivo": "5.3.0",

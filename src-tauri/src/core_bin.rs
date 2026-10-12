@@ -30,6 +30,20 @@ fn candidates() -> Vec<PathBuf> {
 }
 
 /// Expected SHA-256 of the core for this build ("" if not fetched).
+/// `Command` for the core binary. Windows: no console window (sing-box is a
+/// console program; the app is a GUI process).
+pub fn command(bin: &Path) -> std::process::Command {
+    #[allow(unused_mut)]
+    let mut c = std::process::Command::new(bin);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        c.creation_flags(CREATE_NO_WINDOW);
+    }
+    c
+}
+
 pub fn expected_sha256() -> &'static str {
     EXPECTED_SHA256
 }

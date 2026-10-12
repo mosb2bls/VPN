@@ -27,8 +27,9 @@ Each agent edits only its own section.
   rule-sets as resources) — macOS bundle verified locally. CI: tests + lint on every push to
   main; installers on `v*` tags or manual run (owner decision). README with Gatekeeper /
   SmartScreen steps.
-- **Windows:** system proxy implemented (untested; W-SYSPROXY). Not yet: helper service,
-  TUN, firewall kill switch. Rust toolchain pinned to 1.99.0 (`rust-toolchain.toml`) so local
+- **Windows (all untested on a real PC):** system proxy (W-SYSPROXY); helper service +
+  named pipe + TUN + WFP kill switch (B3.2, SPEC 1.4.2, ADR-0007; W-HELPER, W-TUN, W-KILL).
+  CI (macOS + Windows) green: tests, clippy, lint, tsc. Rust toolchain pinned to 1.99.0 (`rust-toolchain.toml`) so local
   and CI lints match. First CI run: macOS tests passed (clippy fixed since); Windows linking
   of the harness fixed (harness is macOS-only).
 - **Known issues:** `npm run tauri dev` fails if another Vite server holds port 1420; use

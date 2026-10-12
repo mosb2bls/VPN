@@ -22,6 +22,7 @@ pub mod failover;
 pub mod helper_proto;
 pub mod link;
 pub mod pf;
+pub mod wfp;
 pub mod qr;
 pub mod redact;
 pub mod restore;

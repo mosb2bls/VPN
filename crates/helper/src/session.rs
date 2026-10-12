@@ -1,34 +1,35 @@
-//! The TUN session run by the helper (as root).
+//! The TUN session run by the helper (root on macOS, LocalSystem on Windows).
+//! Shared by both OSes; per-OS pieces are in `crate::sys`.
 //!
 //! Start: validate the profile → verify core + rule hashes → resolve server
 //! IPs (for the kill switch) → write journal → start sing-box (config on
 //! stdin, generated here) → wait for its Clash API. A supervisor thread waits
 //! on the child; if it exits unexpectedly the kill switch (pf anchor) is
-//! engaged and the core is restarted with backoff for up to 5 minutes; the
+//! engaged (pf / WFP) and the core is restarted with backoff for up to 5 minutes; the
 //! kill switch is released once the core is back. Stop / Restore end the
 //! session, release the kill switch and delete the journal.
 
 use std::io::{BufRead, BufReader, Write};
 use std::net::ToSocketAddrs;
-use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::path::PathBuf;
+use std::process::{Child, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use edge_core::ErrorCode;
 use edge_core::helper_proto::*;
 use edge_core::link::NodeConfig;
-use edge_core::pf::{self, ServerRule};
+use edge_core::pf::ServerRule;
 use edge_core::singbox::{self, Capture, GenInput, RuleSets};
 use serde::{Deserialize, Serialize};
 
-use crate::{pfctl, util};
+use crate::{sys, util};
 
 pub const EXPECTED_SINGBOX_SHA256: &str = env!("HELPER_SINGBOX_SHA256");
 const MANIFEST: &str = include_str!("../../../resources/rules/manifest.json");
 
 pub fn data_dir() -> PathBuf {
-    PathBuf::from(HELPER_DATA)
+    sys::data_dir()
 }
 
 fn journal_path() -> PathBuf {
@@ -46,7 +47,7 @@ pub struct Journal {
 
 fn save_journal(j: &Journal) {
     if let Ok(b) = serde_json::to_vec_pretty(j) {
-        let _ = util::write_atomic(&journal_path(), &b, 0o600);
+        let _ = util::write_private(&journal_path(), &b);
     }
 }
 
@@ -159,7 +160,7 @@ impl Session {
             (had, g.pf_token.take(), std::mem::take(&mut g.kill_switch_active))
         };
         let pf_result = if ks || token.is_some() {
-            pfctl::release(token.as_deref()).map(|_| true)
+            sys::ks_release(token.as_deref()).map(|_| true)
         } else {
             Ok(false)
         };
@@ -188,16 +189,16 @@ impl Session {
         let (had_core, pf) = self.stop_inner();
         let mut stale = false;
         if let Some(pid) = journal.as_ref().and_then(|j| j.pid)
-            && kill_if_ours(pid)
+            && sys::kill_if_ours(pid)
         {
             stale = true;
         }
         // Stale anchor rules / token from a crashed helper.
         let mut pf_items = pf;
-        let leftover_rules = !pfctl::current_rules().trim().is_empty();
+        let leftover_rules = sys::ks_leftover();
         let journal_token = journal.as_ref().and_then(|j| j.pf_token.clone());
         if pf_items.is_ok() && (leftover_rules || journal_token.is_some()) {
-            pf_items = pfctl::release(journal_token.as_deref()).map(|_| true);
+            pf_items = sys::ks_release(journal_token.as_deref()).map(|_| true);
         }
         let core_item = if had_core || stale {
             item("tun_session", "restored", "Stopped the TUN session; its routes were removed with the interface", None)
@@ -271,7 +272,7 @@ impl Session {
         };
         let Some(profile) = profile else { return };
         if profile.kill_switch {
-            match pfctl::engage(&pf::rules(&servers, profile.allow_lan)) {
+            match sys::ks_engage(&servers, profile.allow_lan) {
                 Ok(token) => {
                     let mut g = self.lock();
                     g.kill_switch_active = true;
@@ -310,7 +311,7 @@ impl Session {
                         g.kill_switch_active = false;
                         g.pf_token.take()
                     };
-                    if let Err(e) = pfctl::release(token.as_deref()) {
+                    if let Err(e) = sys::ks_release(token.as_deref()) {
                         util::log(&format!("kill switch release failed: {e}"));
                         self.lock().kill_switch_active = true;
                     }
@@ -360,7 +361,7 @@ pub fn verify_core() -> HResult<()> {
     if EXPECTED_SINGBOX_SHA256.is_empty() {
         return err(ErrorCode::CoreBinaryMissing, "helper built without the core");
     }
-    match util::sha256_file(Path::new(HELPER_SINGBOX)) {
+    match util::sha256_file(&sys::singbox_path()) {
         Ok(h) if h == EXPECTED_SINGBOX_SHA256 => Ok(()),
         Ok(_) => err(ErrorCode::CoreChecksumMismatch, "installed core hash mismatch"),
         Err(e) => err(ErrorCode::CoreBinaryMissing, e.to_string()),
@@ -465,8 +466,8 @@ fn spawn_core(p: &TunProfile, configs: &[(String, NodeConfig)], rules: &RuleSets
     })
     .map_err(|e| (ErrorCode::CoreConfigInvalid, Some(format!("{e:?}"))))?;
     let work = data_dir().join("run");
-    util::ensure_dir(&work, 0o700).map_err(|e| (ErrorCode::TunStartFailed, Some(e.to_string())))?;
-    let mut child = Command::new(HELPER_SINGBOX)
+    util::ensure_private_dir(&work).map_err(|e| (ErrorCode::TunStartFailed, Some(e.to_string())))?;
+    let mut child = sys::core_command()
         .args(["run", "-c", "stdin", "--disable-color", "-D"])
         .arg(&work)
         .stdin(Stdio::piped())
@@ -520,20 +521,6 @@ fn spawn_core(p: &TunProfile, configs: &[(String, NodeConfig)], rules: &RuleSets
         std::thread::sleep(Duration::from_millis(150));
     }
     Ok(Running { child, controller_port: port, controller_secret: secret, selected: p.selected.clone() })
-}
-
-/// Kill a leftover core only if `pid` still runs our installed binary.
-pub fn kill_if_ours(pid: u32) -> bool {
-    let out = Command::new("/bin/ps").args(["-o", "comm=", "-p", &pid.to_string()]).output();
-    let exe = out.ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
-    if exe == HELPER_SINGBOX {
-        unsafe {
-            libc::kill(pid as i32, libc::SIGKILL);
-        }
-        true
-    } else {
-        false
-    }
 }
 
 #[cfg(test)]

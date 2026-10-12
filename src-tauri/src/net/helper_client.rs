@@ -1,6 +1,7 @@
-//! Client for the privileged helper (macOS Unix socket). Install / uninstall
-//! go through the standard macOS administrator prompt (`osascript … with
-//! administrator privileges`), running the helper binary's own install code.
+//! Client for the privileged helper: macOS Unix socket / Windows named pipe.
+//! Install / uninstall run the helper binary's own install code through the
+//! OS elevation prompt (macOS `osascript … with administrator privileges`,
+//! Windows UAC `runas`). ADR-0005, ADR-0007.
 
 #[cfg(unix)]
 use std::io::{BufRead, BufReader, Write};
@@ -13,16 +14,29 @@ use crate::api::error::{ApiResult, AppError, ErrorCode};
 use crate::api::types::HelperStatus;
 
 pub fn installed() -> bool {
-    Path::new(LAUNCHD_PLIST).exists()
+    #[cfg(target_os = "macos")]
+    {
+        Path::new(LAUNCHD_PLIST).exists()
+    }
+    #[cfg(windows)]
+    {
+        edge_winsys::service::is_installed(WIN_SERVICE_NAME)
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
+    {
+        false
+    }
+}
+
+fn unreachable(detail: String) -> AppError {
+    let code = if installed() { ErrorCode::HelperUnreachable } else { ErrorCode::HelperNotInstalled };
+    AppError::new(code).with_detail(detail)
 }
 
 #[cfg(unix)]
 pub fn request(req: &Request, timeout: Duration) -> ApiResult<Response> {
     use std::os::unix::net::UnixStream;
-    let mut s = UnixStream::connect(SOCKET_PATH).map_err(|e| {
-        let code = if installed() { ErrorCode::HelperUnreachable } else { ErrorCode::HelperNotInstalled };
-        AppError::new(code).with_detail(e.to_string())
-    })?;
+    let mut s = UnixStream::connect(SOCKET_PATH).map_err(|e| unreachable(e.to_string()))?;
     let _ = s.set_read_timeout(Some(timeout));
     let _ = s.set_write_timeout(Some(Duration::from_secs(5)));
     let mut line = serde_json::to_string(req).expect("request serializes");
@@ -36,9 +50,40 @@ pub fn request(req: &Request, timeout: Duration) -> ApiResult<Response> {
         .map_err(|e| AppError::new(ErrorCode::HelperUnreachable).with_detail(format!("bad response: {e}")))
 }
 
-#[cfg(not(unix))]
+#[cfg(windows)]
+pub fn request(req: &Request, timeout: Duration) -> ApiResult<Response> {
+    use std::io::{BufRead, BufReader, Write};
+    let f = edge_winsys::pipe::connect(WIN_PIPE_NAME, Duration::from_secs(3)).map_err(|e| unreachable(e.to_string()))?;
+    // Talk only to the installed service binary, never to a process that
+    // grabbed the pipe name first.
+    let server = edge_winsys::pipe::server_pid(&f).and_then(edge_winsys::process::image_path);
+    if !server.as_deref().is_some_and(|p| edge_winsys::paths::same_path(p, &edge_winsys::paths::helper_exe())) {
+        return Err(AppError::new(ErrorCode::HelperAuthFailed).with_detail("pipe server is not the installed helper"));
+    }
+    let mut line = serde_json::to_string(req).expect("request serializes");
+    line.push('\n');
+    // Synchronous pipes have no read timeout: do the exchange on a thread.
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let r = (|| -> std::io::Result<String> {
+            (&f).write_all(line.as_bytes())?;
+            let mut out = String::new();
+            BufReader::new(&f).read_line(&mut out)?;
+            Ok(out)
+        })();
+        let _ = tx.send(r);
+    });
+    let out = rx
+        .recv_timeout(timeout)
+        .map_err(|_| AppError::new(ErrorCode::HelperUnreachable).with_detail("helper did not answer in time"))?
+        .map_err(|e| AppError::new(ErrorCode::HelperUnreachable).with_detail(e.to_string()))?;
+    serde_json::from_str(out.trim())
+        .map_err(|e| AppError::new(ErrorCode::HelperUnreachable).with_detail(format!("bad response: {e}")))
+}
+
+#[cfg(not(any(unix, windows)))]
 pub fn request(_: &Request, _: Duration) -> ApiResult<Response> {
-    Err(AppError::new(ErrorCode::UnsupportedPlatform).with_detail("Windows service: Windows phase"))
+    Err(AppError::new(ErrorCode::UnsupportedPlatform))
 }
 
 fn into_state(r: Response) -> ApiResult<HelperState> {
@@ -97,10 +142,10 @@ pub fn dto() -> HelperStatus {
 }
 
 /// Helper binary shipped with the app (dev: `target/<profile>/edge-helper`).
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", windows))]
 fn bundled_helper() -> ApiResult<PathBuf> {
     let dir = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)).unwrap_or_default();
-    let p = dir.join("edge-helper");
+    let p = dir.join(if cfg!(windows) { "edge-helper.exe" } else { "edge-helper" });
     if p.is_file() {
         Ok(p)
     } else {
@@ -176,14 +221,70 @@ pub fn uninstall() -> ApiResult<HelperStatus> {
     Ok(dto())
 }
 
-#[cfg(not(target_os = "macos"))]
-pub fn install(_resource_dir: Option<PathBuf>) -> ApiResult<HelperStatus> {
-    Err(AppError::new(ErrorCode::UnsupportedPlatform).with_detail("Windows service: Windows phase"))
+/// Run the bundled helper elevated through UAC. Its error text comes back
+/// through a `--report` file (an elevated process has no console we can read).
+#[cfg(windows)]
+fn run_elevated(args: &[String], fail: ErrorCode) -> ApiResult<()> {
+    use edge_winsys::elevate::{ElevateError, run_elevated};
+    let helper = bundled_helper()?;
+    let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let report = std::env::temp_dir().join(format!("edge-helper-{}-{nonce}.txt", std::process::id()));
+    let mut argv = args.to_vec();
+    argv.extend(["--report".into(), report.to_string_lossy().into_owned()]);
+    let r = run_elevated(&helper, &argv);
+    let text = std::fs::read_to_string(&report).unwrap_or_default();
+    let _ = std::fs::remove_file(&report);
+    match r {
+        Ok(0) => Ok(()),
+        Ok(code) => Err(AppError::new(fail).with_detail(if text.trim().is_empty() { format!("exit code {code}") } else { text.trim().to_string() })),
+        Err(ElevateError::Cancelled) => Err(AppError::new(ErrorCode::HelperInstallCancelled)),
+        Err(ElevateError::Failed(e)) => Err(AppError::new(fail).with_detail(e)),
+    }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(windows)]
+pub fn install(resource_dir: Option<PathBuf>) -> ApiResult<HelperStatus> {
+    let singbox = crate::core_bin::locate_verified()?;
+    let rules = crate::rules::bundled_dir(resource_dir);
+    let sid = edge_winsys::security::current_user_sid().map_err(|e| AppError::new(ErrorCode::HelperInstallFailed).with_detail(e))?;
+    run_elevated(
+        &[
+            "install".into(),
+            "--sid".into(),
+            sid,
+            "--sing-box".into(),
+            singbox.to_string_lossy().into_owned(),
+            "--rules".into(),
+            rules.to_string_lossy().into_owned(),
+        ],
+        ErrorCode::HelperInstallFailed,
+    )?;
+    for _ in 0..50 {
+        if status().is_ok() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    Ok(dto())
+}
+
+#[cfg(windows)]
 pub fn uninstall() -> ApiResult<HelperStatus> {
-    Err(AppError::new(ErrorCode::UnsupportedPlatform).with_detail("Windows service: Windows phase"))
+    if !installed() {
+        return Ok(dto());
+    }
+    run_elevated(&["uninstall".into()], ErrorCode::HelperUninstallFailed)?;
+    Ok(dto())
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+pub fn install(_resource_dir: Option<PathBuf>) -> ApiResult<HelperStatus> {
+    Err(AppError::new(ErrorCode::UnsupportedPlatform))
+}
+
+#[cfg(not(any(target_os = "macos", windows)))]
+pub fn uninstall() -> ApiResult<HelperStatus> {
+    Err(AppError::new(ErrorCode::UnsupportedPlatform))
 }
 
 #[cfg(all(test, target_os = "macos"))]

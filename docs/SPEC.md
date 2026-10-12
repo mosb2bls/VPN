@@ -1,6 +1,6 @@
 # EdgeClient — Backend ↔ UI Interface Specification
 
-**Spec version:** 1.4.1
+**Spec version:** 1.4.2
 **Status:** approved; includes REQ-1 to REQ-4 (Phase B1). "1.0.0" marks a breaking change, not feature completeness — most commands are still stubs.
 **Generated bindings:** `src/api/bindings.ts` (from `src-tauri/src/api/*`, via tauri-specta `=2.0.0-rc.25`)
 
@@ -12,6 +12,7 @@ the disagreement is a backend bug — file a REQ.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.4.2 | 2026-10-12 | **Behaviour (B3.2, Windows — untested):** `install_helper` / `uninstall_helper` / `get_helper_status` work on Windows (UAC prompt → Windows service); `connect` in TUN mode runs through it (Wintun, IPv6 captured and rejected, WFP kill switch on core crash, re-attach after app crash) — same contract as macOS. Install errors carry the helper's message in `detail`. ADR-0007. No type changes. |
 | 1.4.1 | 2026-10-12 | **Behaviour:** Windows system proxy mode implemented (WinINet per-user settings, journal, exact restore; ADR-0004 addendum) — **untested on Windows** (checklist W-SYSPROXY). TUN / helper on Windows still → `UNSUPPORTED_PLATFORM` / `HELPER_NOT_INSTALLED`. No type changes. |
 | 1.4.0 | 2026-10-12 | **Additive:** `FailoverKind` value `switched_to_direct`; `FailoverStatus.direct`; error code `DIRECT_FALLBACK_ACTIVE`. **Behaviour:** direct fallback (`safety.directFallback`, default off) is implemented: when every node fails, traffic goes direct (unprotected) and returns to the proxy as soon as a node passes; with it off, all-failing is reported as `ALL_NODES_FAILED` and traffic stays blocked (§5). |
 | 1.3.6 | 2026-10-12 | **Behaviour:** `export_diagnostics` is real (zip in Downloads; contents and redaction in §2.6); `reveal_diagnostics` reveals it. No type changes. |
@@ -189,6 +190,11 @@ must be `null` in this version (non-null → `VALIDATION_FAILED`, field `pinSha2
   success the kill switch is released. After an app crash the TUN session keeps running and
   the next launch **re-attaches** (`lastRecovery.outcome = "reattached"`). Details:
   ADR-0005, ADR-0006.
+- **TUN mode on Windows** (1.4.2, **untested**): same contract. The helper is a Windows
+  service (LocalSystem) installed through UAC; sing-box uses Wintun (embedded in the
+  binary); the kill switch is a WFP filter set that blocks every outbound connection except
+  loopback, the installed sing-box, DHCP, link-local/multicast and (if allowed) LAN, and is
+  removed automatically if the helper process dies. ADR-0007.
 - `connect` returns once the state is `connected` (or `direct`), or fails. Progress is
   visible through `statusChanged` events (`connecting` first).
 - **Preconditions** (REQ-3): `connect` checks these **before** leaving `disconnected`; if
@@ -251,7 +257,7 @@ attempt, scheduled or manual, is also emitted as `rulesUpdated`.
 | Command | Params | Returns | Errors | Elevation | B1 |
 |---|---|---|---|---|---|
 | `get_helper_status` | — | `HelperStatus` | — | no | **real** (`running` = socket answers; `needsUpgrade` = version / protocol / core hash differs) |
-| `install_helper` | — | `HelperStatus` | `HELPER_INSTALL_CANCELLED`, `HELPER_INSTALL_FAILED`, `CORE_*`, `RULES_*` | **yes** — macOS admin password prompt / Windows UAC | **real (macOS)**; Windows → `UNSUPPORTED_PLATFORM` |
+| `install_helper` | — | `HelperStatus` | `HELPER_INSTALL_CANCELLED`, `HELPER_INSTALL_FAILED`, `CORE_*`, `RULES_*` | **yes** — macOS admin password prompt / Windows UAC | **real (macOS)**; Windows implemented, **untested** |
 | `uninstall_helper` | — | `HelperStatus` | `BUSY` (TUN connected), `HELPER_INSTALL_CANCELLED`, `HELPER_UNINSTALL_FAILED` | **yes** | **real (macOS)** |
 
 ### 2.6 App

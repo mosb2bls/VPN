@@ -4,7 +4,7 @@
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
-use std::process::{Child, Command, ExitStatus, Stdio};
+use std::process::{Child, ExitStatus, Stdio};
 use std::sync::{Arc, Mutex};
 
 use crate::api::error::{AppError, ErrorCode};
@@ -22,7 +22,7 @@ impl CoreProcess {
     pub fn spawn(bin: &Path, config: &serde_json::Value, workdir: &Path) -> Result<Self, AppError> {
         crate::store::fsutil::ensure_private_dir(workdir)
             .map_err(|e| AppError::new(ErrorCode::CoreStartFailed).with_detail(e.to_string()))?;
-        let mut child = Command::new(bin)
+        let mut child = crate::core_bin::command(bin)
             .args(["run", "-c", "stdin", "--disable-color", "-D"])
             .arg(workdir)
             .stdin(Stdio::piped())
@@ -93,18 +93,25 @@ impl Drop for CoreProcess {
 pub fn kill_stale(pid: u32, exe: &Path) -> bool {
     #[cfg(unix)]
     {
-        let out = Command::new("/bin/ps").args(["-o", "comm=", "-p", &pid.to_string()]).output();
+        let out = std::process::Command::new("/bin/ps").args(["-o", "comm=", "-p", &pid.to_string()]).output();
         let running = out.ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
         if !running.is_empty() && Path::new(&running) == exe {
-            let _ = Command::new("/bin/kill").args(["-KILL", &pid.to_string()]).status();
+            let _ = std::process::Command::new("/bin/kill").args(["-KILL", &pid.to_string()]).status();
             logbuf::app(crate::api::types::LogLevel::Warn, format!("killed stale sing-box (pid {pid})"));
             return true;
         }
         false
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
     {
-        // Windows: implemented with the Windows phase (B3).
+        let killed = edge_winsys::process::kill_if_image(pid, exe);
+        if killed {
+            logbuf::app(crate::api::types::LogLevel::Warn, format!("killed stale sing-box (pid {pid})"));
+        }
+        killed
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
         let _ = (pid, exe);
         false
     }
