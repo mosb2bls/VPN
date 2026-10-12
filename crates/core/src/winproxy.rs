@@ -34,7 +34,13 @@ pub struct WinProxyState {
 pub fn ours(prev: &WinProxyState, port: u16, allow_lan: bool) -> WinProxyState {
     let mut bypass = vec!["localhost", "127.*", "<local>"];
     if allow_lan {
-        bypass.extend(["10.*", "172.16.*", "172.17.*", "172.18.*", "172.19.*", "172.2*", "172.30.*", "172.31.*", "192.168.*", "169.254.*"]);
+        // 172.16.0.0/12 spelled out: a "172.2*" wildcard would also match
+        // public 172.2.x.x / 172.200-255.x.x and send them direct.
+        bypass.extend([
+            "10.*", "172.16.*", "172.17.*", "172.18.*", "172.19.*", "172.20.*", "172.21.*", "172.22.*", "172.23.*",
+            "172.24.*", "172.25.*", "172.26.*", "172.27.*", "172.28.*", "172.29.*", "172.30.*", "172.31.*",
+            "192.168.*", "169.254.*",
+        ]);
     }
     WinProxyState {
         flags: PROXY_TYPE_DIRECT | PROXY_TYPE_PROXY,
@@ -51,12 +57,15 @@ pub fn refuse_reason(_prev: &WinProxyState) -> Option<String> {
     None
 }
 
-/// `Some(prev)` if the current settings are still ours (restore them),
-/// `None` if they already equal `prev` or the user changed them meanwhile.
+/// Restore if the manual proxy still points at our server — even if other
+/// fields drifted (Windows can turn "Automatically detect settings" back on by
+/// itself, and may normalise strings); leaving a dead local proxy behind would
+/// break networking. Leave alone if the user pointed it elsewhere / turned it off.
 pub fn restore_target(prev: &WinProxyState, ours: &WinProxyState, current: &WinProxyState) -> RestoreDecision {
+    let still_ours = current.flags & PROXY_TYPE_PROXY != 0 && current.server.trim().eq_ignore_ascii_case(ours.server.trim());
     if current == prev {
         RestoreDecision::AlreadyRestored
-    } else if current == ours {
+    } else if still_ours {
         RestoreDecision::Restore(prev.clone())
     } else {
         RestoreDecision::ChangedByUser
@@ -82,10 +91,19 @@ mod tests {
         assert_eq!(o.server, "127.0.0.1:17890");
         assert!(o.bypass.contains("<local>") && o.bypass.contains("192.168.*"));
         assert!(!ours(&prev, 1, false).bypass.contains("192.168.*"));
+        // No wildcard that matches public 172.x addresses.
+        assert!(o.bypass.split(';').all(|e| e != "172.2*"));
+        assert!(o.bypass.contains("172.25.*"));
         assert_eq!(restore_target(&prev, &o, &o), RestoreDecision::Restore(prev.clone()));
         assert_eq!(restore_target(&prev, &o, &prev), RestoreDecision::AlreadyRestored);
         let user = WinProxyState { flags: PROXY_TYPE_DIRECT | PROXY_TYPE_PROXY, server: "10.0.0.9:3128".into(), ..Default::default() };
         assert_eq!(restore_target(&prev, &o, &user), RestoreDecision::ChangedByUser);
+        // Windows re-enabled auto-detect on its own: still ours → restore.
+        let drifted = WinProxyState { flags: o.flags | PROXY_TYPE_AUTO_DETECT, ..o.clone() };
+        assert_eq!(restore_target(&prev, &o, &drifted), RestoreDecision::Restore(prev.clone()));
+        // User turned the manual proxy off (server text kept): not ours.
+        let off = WinProxyState { flags: PROXY_TYPE_DIRECT, ..o.clone() };
+        assert_eq!(restore_target(&prev, &o, &off), RestoreDecision::ChangedByUser);
     }
 
     #[test]

@@ -80,7 +80,8 @@ the IP is never stored).
 
 ## Known limitations
 
-- Windows system proxy (WinINet + notify) and Windows stale-process cleanup: Windows phase.
+- Windows: system proxy see addendum; stale-core cleanup after a crash uses the same
+  PID + executable-path check (untested on Windows).
 - Node edits while connected take effect on the next connect / mode change (the running
   core keeps its config); deleting the active node is refused (`BUSY`).
 - `www.gstatic.com` is in geosite-cn, so in Rule mode browsers reach it directly. Node
@@ -99,8 +100,11 @@ the IP is never stored).
   `INTERNET_PER_CONN_OPTION_LISTW`, "Option Flags".
 - We set: flags DIRECT|PROXY (PAC and auto-detect off while connected), server
   `127.0.0.1:<port>`, bypass `localhost;127.*;<local>` + LAN ranges if allowed. Previous
-  values are journaled first and restored exactly; if the current settings are no longer
-  ours (user changed them), they are left alone.
+  values are journaled first and restored exactly. "Still ours" = manual proxy on and
+  pointing at our `127.0.0.1:<port>`; other fields may have drifted (Windows can re-enable
+  auto-detect by itself) and are restored too. If the user turned the proxy off or pointed
+  it elsewhere, it is left alone. LAN bypass lists 172.16–31 explicitly (a `172.2*`
+  wildcard would also bypass public addresses).
 - Code: pure decisions `edge_core::winproxy`; OS calls `crates/winsys` (no C toolchain
   needed, compile-checked from macOS). **Untested on Windows** — checklist W-SYSPROXY.
 - Not covered: per-dial-up / VPN-connection proxy settings (only the default LAN
