@@ -29,7 +29,9 @@ Each agent edits only its own section.
   SmartScreen steps.
 - **Windows (all untested on a real PC):** system proxy (W-SYSPROXY); helper service +
   named pipe + TUN + WFP kill switch (B3.2, SPEC 1.4.2, ADR-0007; W-HELPER, W-TUN, W-KILL).
-  CI (macOS + Windows) green: tests, clippy, lint, tsc. Rust toolchain pinned to 1.99.0 (`rust-toolchain.toml`) so local
+  CI (macOS + Windows) green: tests, clippy, lint, tsc. Windows checklist (TESTING §3,
+  W-*) run by the Windows tester session; manual CI build can be Windows-only. SPEC 1.4.3:
+  single instance; Windows uninstaller restores networking and removes the helper. Rust toolchain pinned to 1.99.0 (`rust-toolchain.toml`) so local
   and CI lints match. First CI run: macOS tests passed (clippy fixed since); Windows linking
   of the harness fixed (harness is macOS-only).
 - **Known issues:** `npm run tauri dev` fails if another Vite server holds port 1420; use

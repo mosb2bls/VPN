@@ -33,6 +33,15 @@ no `ring` dependency, so the Windows code can be compile-checked from macOS (as
 `uninstall` stops the service, restores networking, deletes the service and removes the
 files.
 
+**App uninstall.** The per-user NSIS installer never runs elevated, and its uninstaller
+would leave the service (outside `$INSTDIR`) running at boot. `src-tauri/windows/hooks.nsh`
+(`NSIS_HOOK_PREUNINSTALL`, which runs before the uninstaller closes the app; Tauri
+`installer.nsi`) therefore does two things:
+- it runs the app's `--restore-networking`;
+- if the service's registry key exists, it runs the bundled `edge-helper.exe uninstall` via
+  `ExecShellWait runas` (one UAC prompt). If the user declines, the service stays and is
+  removed later from the app (TESTING.md W-INSTALL).
+
 **IPC.** The service creates the named pipe `\\.\pipe\io.github.mosb2bls.edgeclient.helper`
 with these settings:
 - an explicit security descriptor: SYSTEM full control, the installing user's SID read/write,

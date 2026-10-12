@@ -5,12 +5,16 @@ Windows x64, connecting only to the owner's server (Hysteria2 UDP 24443 primary,
 VLESS + REALITY + XTLS Vision TCP 443 fallback). "EdgeClient" is a placeholder
 name defined in `crates/core/src/lib.rs` (`APP_NAME`) and `src-tauri/tauri.conf.json`.
 
-Two Claude Code sessions work in this one folder on `main`:
+Two Claude Code sessions work in this one folder on `main`, plus a third on the owner's
+Windows PC:
 
 - **Backend agent** — all functional code (Rust, Tauri commands/events, helper,
   sing-box, networking, rules, DNS, failover, tests, scripts, CI) and owner of
   `docs/SPEC.md`, the contract the UI is built against.
 - **UI agent** — all frontend code (React + TypeScript + Vite).
+- **Windows tester** — runs the Windows checklist (`docs/TESTING.md` §3) on the owner's
+  Windows 11 PC; only tests and diagnoses, never changes code on `main`; writes redacted
+  reports to `docs/windows-test/` and pushes them (commit prefix `wintest:`).
 
 They never edit each other's files and collaborate only through the files below.
 
@@ -26,6 +30,7 @@ They never edit each other's files and collaborate only through the files below.
 | `src-tauri/`, `crates/`, `resources/`, `scripts/`, `tests/`, `.github/` | Backend |
 | `package.json` `scripts` section, `tauri.conf.json`, `Cargo.*` | Backend |
 | `docs/SPEC.md`, `docs/TESTING.md`, `docs/adr/` | Backend |
+| `docs/windows-test/` (redacted Windows test reports) | Windows tester |
 | `docs/collab/REQUESTS.md` | Shared (rules below) |
 | `docs/collab/STATUS.md` | Shared (each agent edits only its own section) |
 | `CLAUDE.md`, `.claude/settings.json` | Backend creates; changes need the owner's approval |
@@ -34,7 +39,7 @@ They never edit each other's files and collaborate only through the files below.
 ## 2. Collaboration protocol
 
 1. **Never edit a file you don't own.** If you need a change there, write a request (rule 4).
-2. **Commit only your own paths**, message prefix `backend:` or `ui:`. Use
+2. **Commit only your own paths**, message prefix `backend:`, `ui:` or `wintest:`. Use
    `git add <owned paths>` — never `git add -A` or `git add .`. Never commit,
    revert, reformat or stash the other agent's uncommitted work. If `git status`
    shows the other agent's changes, leave them alone.

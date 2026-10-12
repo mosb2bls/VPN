@@ -13,6 +13,12 @@ pub fn run() {
     let builder = api::specta_builder();
 
     tauri::Builder::default()
+        // Must be first: a second launch (e.g. Start menu while the login item
+        // is running) hands over to the running app instead of starting a
+        // second session manager for the same journal and system proxy.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            let _ = shell::open_settings(app, None);
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_autostart::init(

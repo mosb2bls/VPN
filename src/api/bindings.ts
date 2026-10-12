@@ -89,7 +89,7 @@ export const events = {
 };
 
 /* Constants */
-export const SPEC_VERSION = "1.4.2" as const;
+export const SPEC_VERSION = "1.4.3" as const;
 
 /* Types */
 /**  The node carrying traffic changed. */

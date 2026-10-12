@@ -1,6 +1,6 @@
 # EdgeClient — Backend ↔ UI Interface Specification
 
-**Spec version:** 1.4.2
+**Spec version:** 1.4.3
 **Status:** approved; includes REQ-1 to REQ-4 (Phase B1). "1.0.0" marks a breaking change, not feature completeness — most commands are still stubs.
 **Generated bindings:** `src/api/bindings.ts` (from `src-tauri/src/api/*`, via tauri-specta `=2.0.0-rc.25`)
 
@@ -12,6 +12,7 @@ the disagreement is a backend bug — file a REQ.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.4.3 | 2026-10-12 | **Behaviour:** single instance — launching the app while it runs (e.g. Start menu while the login item runs) opens the running app's Settings window instead of a second instance. Windows uninstaller first restores networking (`--restore-networking`) and removes the TUN helper service if installed (one UAC prompt). No type changes. |
 | 1.4.2 | 2026-10-12 | **Behaviour (B3.2, Windows — untested):** `install_helper` / `uninstall_helper` / `get_helper_status` work on Windows (UAC prompt → Windows service); `connect` in TUN mode runs through it (Wintun, IPv6 captured and rejected, WFP kill switch on core crash, re-attach after app crash) — same contract as macOS. Install errors carry the helper's message in `detail`. ADR-0007. No type changes. |
 | 1.4.1 | 2026-10-12 | **Behaviour:** Windows system proxy mode implemented (WinINet per-user settings, journal, exact restore; ADR-0004 addendum) — **untested on Windows** (checklist W-SYSPROXY). TUN / helper on Windows still → `UNSUPPORTED_PLATFORM` / `HELPER_NOT_INSTALLED`. No type changes. |
 | 1.4.0 | 2026-10-12 | **Additive:** `FailoverKind` value `switched_to_direct`; `FailoverStatus.direct`; error code `DIRECT_FALLBACK_ACTIVE`. **Behaviour:** direct fallback (`safety.directFallback`, default off) is implemented: when every node fails, traffic goes direct (unprotected) and returns to the proxy as soon as a node passes; with it off, all-failing is reported as `ALL_NODES_FAILED` and traffic stays blocked (§5). |
