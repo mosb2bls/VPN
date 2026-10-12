@@ -1,6 +1,6 @@
 # EdgeClient — Backend ↔ UI Interface Specification
 
-**Spec version:** 1.3.3
+**Spec version:** 1.3.4
 **Status:** approved; includes REQ-1 to REQ-4 (Phase B1). "1.0.0" marks a breaking change, not feature completeness — most commands are still stubs.
 **Generated bindings:** `src/api/bindings.ts` (from `src-tauri/src/api/*`, via tauri-specta `=2.0.0-rc.25`)
 
@@ -12,6 +12,7 @@ the disagreement is a backend bug — file a REQ.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.3.4 | 2026-10-12 | **Behaviour (B5):** `set_settings` applies launch-at-login immediately (macOS LaunchAgent / Windows Run key via the Tauri autostart plugin; failure → `LAUNCH_AT_LOGIN_FAILED`, nothing saved); `get_settings.launchAtLogin` reports the real login-item state; auto-connect runs at launch after recovery, only from a clean `disconnected` state; with close-to-tray off, closing the settings window quits (with restore). No type changes. |
 | 1.3.3 | 2026-10-12 | **Behaviour (B4):** automatic failover is implemented as described in §5 (decision engine `edge_core::failover`, unit-tested with simulated sequences); `failoverEvent` (all three kinds), `activeNodeChanged` (`failover` / `failback`), `Status.failover` with `earliestReturnAt`. Real UDP-block test pending (TESTING M-FAILOVER). No type changes. |
 | 1.3.2 | 2026-10-12 | **Behaviour (B3.1, macOS):** `get_helper_status` / `install_helper` / `uninstall_helper` are real (admin prompt); `connect` in **TUN mode** runs through the helper (TUN + IPv6 capture/reject, pf kill switch on core crash, re-attach after app crash). Untested on a real Mac until the owner installs the helper. ADR-0005, ADR-0006. No type changes. |
 | 1.3.1 | 2026-10-12 | **Behaviour (B2.7, macOS):** `connect` / `disconnect` / `restore_networking` / `quit_app` / mode setters work in **system proxy mode** (journal, exact restore, per-item reports, launch recovery, `--restore-networking`); `test_node` and `get_logs` are real; `delete_node` of the active node → `BUSY`. TUN still → `HELPER_NOT_INSTALLED`; Windows system proxy not yet (→ `SYSTEM_PROXY_SET_FAILED`). See ADR-0004. No type changes. |
@@ -253,6 +254,12 @@ attempt, scheduled or manual, is also emitted as `rulesUpdated`.
 - `get_logs` (REQ-3): polling every ~2 s while a logs view is visible is fine (the
   backend keeps a 2000-entry in-memory ring buffer; `limit` is capped at 1000). There is
   no log-stream event in this version.
+- **Lifecycle (B5):** launch at login is applied immediately and reported from the OS
+  (the user may remove the login item in System Settings). Auto-connect runs once at
+  launch, after any recovery, and only if the state is `disconnected` (a re-attached TUN
+  session or an incomplete restore is left as is); a failure is emitted as `errorRaised`.
+  Close-to-tray on: closing the settings window hides it; off: it quits (disconnect +
+  restore first). The popover always hides.
 - `AppSettings` defaults: launch at login off, auto-connect off, close-to-tray on, rule
   auto-update on every 24 h, log level `info`.
 - `export_diagnostics` writes a zip to the user's Downloads folder (logs, redacted config,

@@ -13,6 +13,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--autostart"]),
+        ))
         .manage(net::session::OpLock(tokio::sync::Mutex::new(())))
         .manage(shell::ShellState::default())
         .invoke_handler(builder.invoke_handler())
@@ -21,6 +25,7 @@ pub fn run() {
             builder.mount_events(app);
             shell::setup(app)?;
             net::session::recover_at_launch(app.handle());
+            net::session::auto_connect_at_launch(app.handle());
             Ok(())
         })
         .run(tauri::generate_context!())

@@ -526,7 +526,13 @@ pub async fn reveal_diagnostics(app: AppHandle) -> ApiResult<()> {
 #[tauri::command]
 #[specta::specta]
 pub async fn get_settings(app: AppHandle) -> ApiResult<AppSettings> {
-    with_state(&app, |st| Ok(st.prefs.prefs.app.clone()))
+    use tauri_plugin_autostart::ManagerExt;
+    let mut settings = with_state(&app, |st| Ok(st.prefs.prefs.app.clone()))?;
+    // Report the real login item state (the user may have removed it in System Settings).
+    if let Ok(enabled) = app.autolaunch().is_enabled() {
+        settings.launch_at_login = enabled;
+    }
+    Ok(settings)
 }
 
 #[tauri::command]
@@ -538,7 +544,13 @@ pub async fn set_settings(app: AppHandle, settings: AppSettings) -> ApiResult<Ap
             ErrorCode::FieldOutOfRange,
         )]));
     }
-    // Stored now; launch-at-login / auto-connect / close-to-tray take effect in B5.
+    use tauri_plugin_autostart::ManagerExt;
+    let autolaunch = app.autolaunch();
+    let currently = autolaunch.is_enabled().unwrap_or(false);
+    if settings.launch_at_login != currently {
+        let r = if settings.launch_at_login { autolaunch.enable() } else { autolaunch.disable() };
+        r.map_err(|e| AppError::new(ErrorCode::LaunchAtLoginFailed).with_detail(e.to_string()))?;
+    }
     with_state(&app, |st| Ok(st.prefs.update(|p| p.app = settings)?.app.clone()))
 }
 

@@ -61,10 +61,24 @@ pub fn setup(app: &mut tauri::App) -> tauri::Result<()> {
     if let Some(w) = handle.get_webview_window(SETTINGS) {
         let _ = w.set_title(&format!("{} Settings", edge_core::APP_NAME));
         let win = w.clone();
+        let h = handle.clone();
         w.on_window_event(move |e| {
             if let WindowEvent::CloseRequested { api, .. } = e {
                 api.prevent_close();
-                let _ = win.hide();
+                let to_tray = h
+                    .state::<AppState>()
+                    .lock()
+                    .map(|st| st.prefs.prefs.app.close_to_tray)
+                    .unwrap_or(true);
+                if to_tray {
+                    let _ = win.hide();
+                } else {
+                    // Close-to-tray off: closing the window quits (with restore).
+                    let h = h.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let _ = commands::ops::quit(&h).await;
+                    });
+                }
             }
         });
     }

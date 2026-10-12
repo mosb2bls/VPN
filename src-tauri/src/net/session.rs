@@ -1222,6 +1222,30 @@ async fn reattach_tun(app: &AppHandle, dir: &Path) -> bool {
     true
 }
 
+/// Auto-connect (setting, off by default): after launch recovery has
+/// finished, connect with the persisted node, routing and capture mode — only
+/// from a clean `disconnected` state (not after a re-attach or an incomplete
+/// restore).
+pub fn auto_connect_at_launch(app: &AppHandle) {
+    if !with(app, |st| st.prefs.prefs.app.auto_connect) {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        // Let recovery (if any) take and release the operation lock first.
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        drop(app.state::<OpLock>().inner().0.lock().await);
+        if with(&app, |st| st.status.state) != ConnectionState::Disconnected {
+            return;
+        }
+        logbuf::app(LogLevel::Info, "auto-connect at launch");
+        if let Err(e) = connect(&app).await {
+            logbuf::app(LogLevel::Warn, format!("auto-connect failed: {:?}", e.code));
+            let _ = crate::api::events::ErrorRaised { error: e }.emit(&app);
+        }
+    });
+}
+
 /// Data directory without Tauri (for `--restore-networking`): same location
 /// Tauri uses for `app_data_dir`.
 pub fn cli_data_dir() -> Option<PathBuf> {
