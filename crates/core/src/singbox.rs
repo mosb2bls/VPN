@@ -468,6 +468,9 @@ mod tests {
                 std::fs::write(&path, &text).unwrap();
             } else {
                 let expected = std::fs::read_to_string(&path).expect("snapshot missing: run with UPDATE_SNAPSHOTS=1");
+                // Windows: CRLF checkout, and `Path::join` uses `\` (JSON-escaped `\\`).
+                let expected = expected.replace("\r\n", "\n");
+                let text = if cfg!(windows) { text.replace("\\\\", "/") } else { text.clone() };
                 assert!(expected == text, "snapshot {name} differs: review, then UPDATE_SNAPSHOTS=1");
             }
         }

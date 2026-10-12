@@ -39,7 +39,8 @@ jobs:
       - name: Fetch and verify sing-box + rule-sets
         run: npm run fetch-core
       - name: Rust tests
-        run: cargo test --workspace
+        # --no-fail-fast: report every failing test binary in one run.
+        run: cargo test --workspace --no-fail-fast
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Frontend lint

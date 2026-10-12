@@ -106,7 +106,12 @@ mod tests {
         let fresh = std::fs::read_to_string(&tmp).unwrap();
         let _ = std::fs::remove_file(&tmp);
         let current = std::fs::read_to_string(committed()).unwrap_or_default();
-        assert!(fresh == current, "src/api/bindings.ts is stale: run `npm run gen:bindings`");
+        // A Windows checkout may have CRLF line endings (git autocrlf).
+        let (fresh, current) = (fresh.replace("\r\n", "\n"), current.replace("\r\n", "\n"));
+        if let Some((i, (f, c))) = fresh.lines().zip(current.lines()).enumerate().find(|(_, (f, c))| f != c) {
+            panic!("src/api/bindings.ts is stale: run `npm run gen:bindings` (line {}: generated {f:?}, committed {c:?})", i + 1);
+        }
+        assert!(fresh == current, "src/api/bindings.ts is stale: run `npm run gen:bindings` (length differs)");
     }
 
     #[test]
