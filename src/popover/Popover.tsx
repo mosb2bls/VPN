@@ -18,7 +18,7 @@ import { openTimeline, stateTimeline as ST } from "../design/motion";
 import type { CaptureMode, ImportResult, RoutingMode, Status } from "../api/bindings";
 import type { Result } from "../api/types";
 import { protocolBadge, rate, since, transport } from "../lib/format";
-import { applyStatus, selectLastEvent, selectTunUnavailable, useApp } from "../state/store";
+import { applyStatus, selectLastEvent, selectTunLabel, useApp } from "../state/store";
 import { Frame, MetaLabel } from "../ui/Frame";
 import { Segmented } from "../ui/Segmented";
 import { MotionGate, useMotionOk } from "../ui/motionGate";
@@ -160,12 +160,11 @@ export function Popover() {
     else if (a === "open_logs") void run(commands.openSettings("logs"));
     else if (a === "import_clipboard") void importClipboard();
     else if (a === "open_safety") void run(commands.openSettings("safety"));
-    else if (a === "use_system_proxy") void run(commands.setCaptureMode("system_proxy"));
   };
 
   const shown = status ? nodes.find((n) => n.id === (status.activeNodeId ?? status.selectedNodeId)) : undefined;
-  const tunUnavailable = useApp(selectTunUnavailable);
-  const view = status ? derivePopoverView(status, reason, helper, restore, nodes, { tunUnavailable }) : null;
+  const tunLabel = useApp(selectTunLabel);
+  const view = status ? derivePopoverView(status, reason, helper, restore, nodes, { tunLabel }) : null;
   /** Direct fallback active: no node carries traffic (SPEC 1.4.0). */
   const directFallback = !!status?.failover?.direct;
   const live = !!status?.connectedSince && (status.state === "direct" || isProxying(status));
@@ -280,9 +279,12 @@ export function Popover() {
               <Segmented label="Routing mode" options={ROUTING} value={status.routingMode} onChange={(m) => void run(commands.setRoutingMode(m))} />
             </Row>
             <Row label="Capture">
-              <Segmented label="Capture mode" options={CAPTURE.map((o) =>
-                  o.value === "tun" && tunUnavailable ? { ...o, disabled: true, title: "TUN is not available on Windows yet" } : o,
-                )} value={status.captureMode} onChange={(m) => void run(commands.setCaptureMode(m))} />
+              <Segmented
+                label="Capture mode"
+                options={CAPTURE.map((o) => (o.value === "tun" && tunLabel ? { ...o, title: `TUN (${tunLabel.toLowerCase()})` } : o))}
+                value={status.captureMode}
+                onChange={(m) => void run(commands.setCaptureMode(m))}
+              />
             </Row>
 
             {view.notice ? (
@@ -291,11 +293,15 @@ export function Popover() {
             ) : (
               <>
                 {/* rows 11–12 · coverage note */}
-                <p className="row-span-2 flex items-center text-[11px] leading-[15px] text-ink-muted">
-                  {status.captureMode === "system_proxy"
-                    ? "Only apps that use the system proxy are covered. Use TUN for whole-device protection."
-                    : "TUN covers the whole device. The kill switch blocks traffic if the proxy stops."}
-                </p>
+                <div className="row-span-2 flex flex-col justify-center gap-0.5">
+                  {/* Windows: TUN is experimental (owner decision; one flag in lib/experimental.ts). */}
+                  {tunLabel && <span className="label truncate text-ink">{tunLabel}</span>}
+                  <p className="text-[11px] leading-[15px] text-ink-muted">
+                    {status.captureMode === "system_proxy"
+                      ? "Only apps that use the system proxy are covered. Use TUN for whole-device protection."
+                      : "TUN covers the whole device. The kill switch blocks traffic if the proxy stops."}
+                  </p>
+                </div>
                 {/* rows 13–15 · speeds (row 15 left open) */}
                 <div className="row-span-3 grid grid-cols-3 content-start pt-1">
                   <Stat label="Up" mode="fade" value={stats ? rate(stats.upBytesPerSec) : "—"} />
@@ -399,6 +405,7 @@ function NoticeBlock({ notice, onAction }: { notice: Notice; onAction: (a: Actio
     <div className="row-span-5 flex gap-2.5 overflow-hidden py-2" role={notice.tone === "error" ? "alert" : "status"}>
       <span aria-hidden className={`w-[3px] shrink-0 ${bar}`} />
       <div className="flex min-w-0 flex-col gap-1">
+        {notice.badge && <span className="label text-ink">{notice.badge}</span>}
         <p className="text-body font-medium">{notice.title}</p>
         {notice.lines.map((l) => (
           <p key={l} className="text-[11px] leading-[15px] text-ink">

@@ -7,7 +7,7 @@ Each agent edits only its own section.
 - **Phase/step:** B3.1 — macOS privileged helper + TUN mode + pf kill switch + re-attach
   (implemented and unit-tested; **awaiting owner install + real TUN tests**, TESTING §6).
   Next: Windows service / WFP (B3.2) after the macOS results; then failover (B4).
-- **SPEC version:** 1.4.1 (direct fallback → UNPROTECTED state; ALL NODES DOWN; Windows: TUN disabled/explained)
+- **SPEC version:** 1.4.2 (Windows TUN + helper enabled, labelled experimental; helper failure detail shown)
 - **Real:** nodes, settings, system proxy mode (macOS), TUN mode via helper (macOS),
   helper status / install / uninstall (macOS, admin prompt), live node switch, test_node,
   logs, launch recovery (restore or TUN re-attach), `--restore-networking`, windows + tray,
@@ -39,7 +39,7 @@ Each agent edits only its own section.
 ## UI
 
 - **Phase/step:** U4 — checking screens against the real backend (needs owner runs of the real app). U2, U3 complete.
-- **SPEC version:** 1.4.1 (direct fallback → UNPROTECTED state; ALL NODES DOWN; Windows: TUN disabled/explained)
+- **SPEC version:** 1.4.2 (Windows TUN + helper enabled, labelled experimental; helper failure detail shown)
 - **Real / stubbed:** `src/api/client.ts` wraps `bindings.ts` (real inside Tauri, mock in a
   browser; `VITE_USE_MOCK` overrides). Mock simulates every SPEC command, event and error
   code. The `popover` window renders the designed popover (`src/popover/`: all states,

@@ -1,7 +1,7 @@
 # EdgeClient — UI notes
 
 Owner: UI agent. Approved design decisions, tokens and frontend structure.
-Built against **SPEC v1.4.1**.
+Built against **SPEC v1.4.2**.
 
 ## 1. Approved decisions (U0)
 
@@ -38,6 +38,8 @@ Built against **SPEC v1.4.1**.
 | D30 | **UNPROTECTED** (direct fallback active, SPEC 1.4.0: `failover.direct` / `DIRECT_FALLBACK_ACTIVE`): vermilion word, sub "All nodes failing — traffic is going out directly", error notice "Traffic is not protected" + link to Safety, solid DISCONNECT, node label "Node · not in use", corner `DIRECT · NO PROXY`. `switched_to_direct` is an error-level activity. |
 | D31 | **ALL NODES DOWN** (direct fallback off, `ALL_NODES_FAILED`): vermilion word, sub "Traffic is blocked to prevent leaks", error notice "No node is reachable" (+ system-proxy caveat), link Test nodes, outline DISCONNECT. D30/D31 rank right after BLOCKED and NOT RESTORED. |
 | D32 | Windows (SPEC 1.4.1, platform from `getAppInfo`): TUN option disabled with "not available on Windows yet" in popover and Connection (arrow keys skip it); Helper section explains instead of offering install; a stored TUN preference shows OFF + USE SYSTEM PROXY. |
+| D33 | Windows TUN + helper **enabled** (SPEC 1.4.2, owner) and labelled `EXPERIMENTAL — UNTESTED ON WINDOWS` (mono uppercase, ink, no new colour): popover under the Capture switch (and on the HELPER MISSING notice), Settings › Connection, Settings › Helper; TUN option tooltip. One flag: `WINDOWS_TUN_EXPERIMENTAL` in `src/lib/experimental.ts`. Supersedes D32. |
+| D34 | Helper install / uninstall failures show `AppError.detail` under the message as selectable mono text, with the error code, for test reports. |
 | D8 | **NOT RESTORED** (partial restore, SPEC §2.7): shown whenever `lastRestore.fullyRestored` is false and the app is not proxying; never looks like OFF. Lists each failed/skipped item, offers Retry (Restore networking) and explains `--restore-networking`. Only an engaged kill switch (BLOCKED) ranks above it. |
 
 ## 2. Frontend structure

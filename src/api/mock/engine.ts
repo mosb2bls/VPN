@@ -1145,11 +1145,19 @@ export class MockEngine {
     getHelperStatus: () => this.call("getHelperStatus", () => ok(clone(this.helper))),
     installHelper: () =>
       this.call("installHelper", async () => {
-        // SPEC 1.4.1: no helper / TUN on Windows yet.
-        if (this.appInfo().platform === "windows") return fail(appError("UNSUPPORTED_PLATFORM"));
+        // SPEC 1.4.2: Windows helper = service via UAC; install failures carry the helper's message in `detail`.
+        const win = this.appInfo().platform === "windows";
         this.log("info", "app", "Requesting administrator approval to install helper");
         await this.sleep(2500);
         const o = this.dev.helperInstallOutcome;
+        if (o === "HELPER_INSTALL_FAILED")
+          return fail(
+            appError(o, {
+              detail: win
+                ? "helper: CreateServiceW failed: Access is denied. (os error 5)\nservice: LynnkHelper · step 2/4 (register service)"
+                : "helper: launchctl bootstrap system failed: 5: Input/output error\nstep 3/4 (load daemon)",
+            }),
+          );
         if (o !== "ok") return fail(appError(o));
         this.helper = { ...this.helper, installed: true, running: true, version: this.helper.expectedVersion, needsUpgrade: false };
         this.emit("helperStatusChanged", { status: this.helper });

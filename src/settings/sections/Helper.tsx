@@ -1,15 +1,18 @@
-// 06 / HELPER — privileged helper for TUN: status, install, reinstall, uninstall (SPEC §2.5, §9.3, 1.3.2).
+// 06 / HELPER — privileged helper for TUN: status, install, reinstall, uninstall
+// (SPEC §2.5, §9.3, 1.3.2; Windows service 1.4.2 — experimental, owner decision).
 import { useState } from "react";
 import { commands } from "../../api/client";
 import type { AppError } from "../../api/bindings";
-import { selectTunUnavailable, useApp } from "../../state/store";
+import { selectTunLabel, useApp } from "../../state/store";
 import { isProxying } from "../../popover/view";
+import { APP_NAME } from "../../lib/brand";
 import { Button, ErrorNote, Note, SectionHeader } from "../kit";
 
 export function HelperSection() {
   const helper = useApp((s) => s.helper);
   const status = useApp((s) => s.status);
-  const unavailable = useApp(selectTunUnavailable);
+  const tunLabel = useApp(selectTunLabel);
+  const windows = useApp((s) => s.appInfo?.platform === "windows");
   const [busy, setBusy] = useState<null | "install" | "uninstall">(null);
   const [error, setError] = useState<AppError | null>(null);
   const tunLive = !!status && status.captureMode === "tun" && isProxying(status);
@@ -32,20 +35,10 @@ export function HelperSection() {
           ? "Installed and running"
           : "Installed, not responding";
 
-  if (unavailable)
-    return (
-      <div className="flex flex-col gap-5">
-        <SectionHeader index="06 / Helper" title="Helper" />
-        <Note tone="info" title="Not available on Windows yet">
-          The helper and TUN (whole-device) mode are coming later for Windows. Use System proxy mode for now — it covers apps that use the
-          system proxy setting.
-        </Note>
-      </div>
-    );
-
   return (
     <div className="flex flex-col gap-5">
       <SectionHeader index="06 / Helper" title="Helper" />
+      {tunLabel && <span className="label text-ink">{tunLabel}</span>}
       <p className="text-body">
         TUN mode protects the whole device. It needs a small helper that runs with administrator rights: it starts the proxy core with a
         TUN interface, applies the kill switch and puts your network settings back. It is installed once and can be removed here.
@@ -68,8 +61,14 @@ export function HelperSection() {
       {(!helper?.installed || helper.needsUpgrade) && (
         <Note tone="info" title="What to expect">
           <ul className="flex list-disc flex-col gap-0.5 pl-4">
-            <li>macOS asks for your administrator password (“EdgeClient wants to make changes”). On Windows, a UAC prompt appears.</li>
-            <li>macOS may show a “Background Items Added” notification — that is the helper.</li>
+            {windows ? (
+              <li>Windows shows a User Account Control prompt. The helper is installed as a Windows service.</li>
+            ) : (
+              <>
+                <li>macOS asks for your administrator password (“{APP_NAME} wants to make changes”).</li>
+                <li>macOS may show a “Background Items Added” notification — that is the helper.</li>
+              </>
+            )}
             <li>Nothing about your network changes until you connect in TUN mode.</li>
           </ul>
         </Note>
@@ -97,8 +96,19 @@ export function HelperSection() {
         (error.code === "HELPER_INSTALL_CANCELLED" ? (
           <Note title="Installation cancelled">Nothing was changed. You can try again any time.</Note>
         ) : (
-          <ErrorNote error={error} />
+          <HelperError error={error} />
         ))}
     </div>
+  );
+}
+
+/** Install / uninstall failure: message, then the helper's own detail as selectable text (owner: copy into test reports). */
+function HelperError({ error }: { error: AppError }) {
+  if (!error.detail) return <ErrorNote error={error} />;
+  return (
+    <Note tone="error" title={error.message}>
+      <p className="label mt-1 text-ink-muted">Details · {error.code}</p>
+      <pre className="mt-1 cursor-text font-mono text-[11px] leading-[16px] break-all whitespace-pre-wrap text-ink-muted select-text">{error.detail}</pre>
+    </Note>
   );
 }

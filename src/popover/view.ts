@@ -18,12 +18,13 @@ export type Action =
   | "open_logs"
   | "open_safety"
   | "import_clipboard"
-  | "use_system_proxy"
   | "none";
 
 export interface Notice {
   /** error = vermilion bar, warn = mustard bar, info = ink bar. Text is always ink on paper (D14). */
   tone: "error" | "warn" | "info";
+  /** Small mono label above the title (e.g. "Experimental — untested on Windows"). */
+  badge?: string | null;
   title: string;
   lines: string[];
   links: { label: string; action: Action }[];
@@ -65,8 +66,8 @@ export function derivePopoverView(
   helper: HelperStatus | null,
   restore: RestoreReport | null,
   nodes: Node[],
-  /** TUN / helper not available on this platform (Windows, SPEC 1.4.1). */
-  opts: { tunUnavailable?: boolean } = {},
+  /** Experimental label for TUN / helper on this platform (Windows), or null. */
+  opts: { tunLabel?: string | null } = {},
 ): PopoverView {
   const shown = nodes.find((n) => n.id === (status.activeNodeId ?? status.selectedNodeId));
   const proxying = isProxying(status);
@@ -211,21 +212,6 @@ export function derivePopoverView(
           },
           primary: solid("CONNECT", "connect", true),
         };
-      if (status.captureMode === "tun" && opts.tunUnavailable)
-        return {
-          ...base,
-          key: "tun_unavailable",
-          word: "OFF",
-          tone: "ink",
-          sub: "TUN mode is not available on Windows yet",
-          notice: {
-            tone: "info",
-            title: "Use System proxy on Windows",
-            lines: ["Whole-device (TUN) mode is coming later for Windows. System proxy covers apps that use the system proxy setting."],
-            links: [],
-          },
-          primary: solid("USE SYSTEM PROXY", "use_system_proxy"),
-        };
       if (helperMissing)
         return {
           ...base,
@@ -235,9 +221,10 @@ export function derivePopoverView(
           sub: "TUN mode needs a one-time helper install",
           notice: {
             tone: "info",
+            badge: opts.tunLabel,
             title: "Install the helper to use TUN",
             lines: [
-              "It runs the proxy for the whole device and applies the kill switch. Your system will ask for an administrator password once.",
+              "It runs the proxy for the whole device and applies the kill switch. Your system will ask for administrator approval once.",
               "Or switch Capture to System proxy.",
             ],
             links: [],

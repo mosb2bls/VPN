@@ -2,6 +2,7 @@
 // first, then events) plus a short activity history for the "last event" line.
 import { useSyncExternalStore } from "react";
 import { commands, on } from "../api/client";
+import { tunExperimentalLabel } from "../lib/experimental";
 import type {
   AppError,
   AppInfo,
@@ -179,5 +180,5 @@ export const selectNotRestored = (s: AppState): boolean => s.restore !== null &&
 /** The most recent failover reason or error, for the popover's one-line slot. */
 export const selectLastEvent = (s: AppState): Activity | null => s.activity[0] ?? null;
 
-/** TUN / helper are not available on this platform yet (Windows, SPEC 1.4.1). */
-export const selectTunUnavailable = (s: AppState): boolean => s.appInfo?.platform === "windows";
+/** Label for TUN / helper controls on this platform (Windows: experimental), or null. */
+export const selectTunLabel = (s: AppState): string | null => tunExperimentalLabel(s.appInfo);

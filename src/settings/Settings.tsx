@@ -9,7 +9,7 @@ import type { SettingsSection } from "../api/bindings";
 import { navTimeline as N } from "../design/motion";
 import { protocolBadge } from "../lib/format";
 import { derivePopoverView, TONE_CLASS } from "../popover/view";
-import { selectTunUnavailable, useApp } from "../state/store";
+import { selectTunLabel, useApp } from "../state/store";
 import { useMotionOk } from "../ui/motionGate";
 import { SettingsNav } from "./nav";
 import { AboutSection } from "./sections/About";
@@ -109,9 +109,9 @@ function RailStatus() {
   const helper = useApp((s) => s.helper);
   const restore = useApp((s) => s.restore);
   const reason = useApp((s) => s.statusReason);
-  const tunUnavailable = useApp(selectTunUnavailable);
+  const tunLabel = useApp(selectTunLabel);
   if (!status) return null;
-  const v = derivePopoverView(status, reason, helper, restore, nodes, { tunUnavailable });
+  const v = derivePopoverView(status, reason, helper, restore, nodes, { tunLabel });
   const node = nodes.find((n) => n.id === (status.activeNodeId ?? status.selectedNodeId));
   return (
     <div className="flex flex-col gap-0.5">
