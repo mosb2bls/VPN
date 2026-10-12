@@ -32,7 +32,11 @@ Each agent edits only its own section.
   CI (macOS + Windows) green: tests, clippy, lint, tsc. Windows checklist (TESTING §3,
   W-*) run by the Windows tester session; manual CI build can be Windows-only. SPEC 1.4.3:
   single instance; Windows uninstaller restores networking and removes the helper.
-  SPEC 1.4.4: renamed to Lynnk (OS-visible names; identifiers unchanged). Rust toolchain pinned to 1.99.0 (`rust-toolchain.toml`) so local
+  SPEC 1.4.4: renamed to Lynnk (OS-visible names; identifiers unchanged).
+  macOS re-run after the helper refactor: M-HELPER (reinstall), M-TUN, M-KILL PASS
+  2026-10-13. Fixed: macOS helper install failed with "Operation not permitted" when the
+  app/checkout lives in a privacy-protected folder (Desktop) — install files are now staged
+  in a private temp dir first. Rust toolchain pinned to 1.99.0 (`rust-toolchain.toml`) so local
   and CI lints match. First CI run: macOS tests passed (clippy fixed since); Windows linking
   of the harness fixed (harness is macOS-only).
 - **Known issues:** `npm run tauri dev` fails if another Vite server holds port 1420; use
