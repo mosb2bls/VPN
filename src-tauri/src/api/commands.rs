@@ -347,17 +347,9 @@ pub async fn set_safety_settings(app: AppHandle, settings: SafetySettings) -> Ap
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_rules_status() -> ApiResult<RulesStatus> {
-    Ok(RulesStatus {
-        version: "placeholder".into(),
-        source: RulesSource::Bundled,
-        updated_at: None,
-        last_check_at: None,
-        next_check_at: None,
-        updating: false,
-        sets: vec![],
-        last_error: None,
-    })
+pub async fn get_rules_status(app: AppHandle) -> ApiResult<RulesStatus> {
+    let error = with_state(&app, |st| Ok(st.rules.as_ref().err().cloned()))?;
+    Ok(crate::rules::status(&crate::rules::embedded_manifest(), error))
 }
 
 #[tauri::command]

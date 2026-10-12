@@ -1,6 +1,6 @@
 # EdgeClient — Backend ↔ UI Interface Specification
 
-**Spec version:** 1.2.1
+**Spec version:** 1.3.0
 **Status:** approved; includes REQ-1 to REQ-4 (Phase B1). "1.0.0" marks a breaking change, not feature completeness — most commands are still stubs.
 **Generated bindings:** `src/api/bindings.ts` (from `src-tauri/src/api/*`, via tauri-specta `=2.0.0-rc.25`)
 
@@ -12,6 +12,7 @@ the disagreement is a backend bug — file a REQ.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.3.0 | 2026-10-12 | **Additive (B2.6):** error code `RULES_MISSING`. **Behaviour:** `get_rules_status` is real (bundled, pinned `geosite-cn` / `geoip-cn` rule-sets; `version` = manifest version, `updatedAt` = newest source commit time). Rule *updates* are still `NOT_IMPLEMENTED`. |
 | 1.2.1 | 2026-10-12 | **Clarification / tightened import (B2.5):** VLESS `spx` (spiderX) is now **rejected** if non-empty and `VlessForm.spiderX` must be null — sing-box 1.14 has no spiderX option (previously accepted and would have been ignored). §6 now names the exact resolvers and routing order (ADR-0003). No type changes. |
 | 1.2.0 | 2026-10-12 | **Additive (owner-approved):** event `popoverHidden` (payload `null`, to `popover` only), emitted every time the backend hides the popover, whatever the cause (§2.8). |
 | 1.1.2 | 2026-10-12 | **Behaviour (B2.4):** `get_app_info().coreVersion` now returns the pinned sing-box version (`"1.14.3"`); `CORE_BINARY_MISSING` / `CORE_CHECKSUM_MISMATCH` semantics clarified (§7). No type changes. |
@@ -206,7 +207,7 @@ timeout 5 s, 3 rounds, dwell 300 s, return-stable 600 s, 4 switches/hour.
 
 | Command | Params | Returns | Errors | Elevation | B1 |
 |---|---|---|---|---|---|
-| `get_rules_status` | — | `RulesStatus` | — | no | placeholder |
+| `get_rules_status` | — | `RulesStatus` | — | no | **real** (bundled set; `lastError` = `RULES_MISSING` / `RULES_VALIDATION_FAILED` if the bundled files are absent or damaged) |
 | `update_rules_now` | — | `RulesStatus` | `RULES_UPDATE_IN_PROGRESS`, `RULES_DOWNLOAD_FAILED`, `RULES_VALIDATION_FAILED` | no | stub |
 
 On failure the previous rules stay active (failure is recoverable). The result of every
@@ -349,6 +350,7 @@ emits `errorRaised` (so the UI can show it); state changes arrive as the usual
 |---|---|---|
 | Node list (non-secret: name, protocol, server, port, SNI, options, last test), order, selection | `<app config dir>/nodes.json` | macOS: `~/Library/Application Support/io.github.mosb2bls.edgeclient/`; Windows: `%APPDATA%\io.github.mosb2bls.edgeclient\`. Atomic writes; mode 0600 / dir 0700 on macOS. **Contains no secrets.** |
 | Modes, failover, safety, app settings | `<app config dir>/settings.json` | Missing fields fall back to defaults. |
+| Active rule-sets (`geosite-cn.srs`, `geoip-cn.srs`) | `<app data dir>/rules/` | Copied from the app bundle at launch after SHA-256 check against the embedded manifest; damaged copies are replaced. Automatic updates (later step) swap new files in atomically. |
 | Node secrets (HY2 password, obfs password; VLESS UUID, REALITY public key, short ID) | OS keychain: one item, service `io.github.mosb2bls.edgeclient`, account `node-secrets` | macOS Keychain / Windows Credential Manager. One item for all nodes → at most one macOS access prompt per launch. |
 
 - A corrupt `nodes.json` / `settings.json` is moved aside (`*.json.corrupt`), the app starts
@@ -563,7 +565,7 @@ patch). Full list, with default messages, in `src-tauri/src/api/error.rs`
 | Core / connection | `CORE_BINARY_MISSING`, `CORE_CHECKSUM_MISMATCH`, `CORE_CONFIG_INVALID`, `CORE_START_FAILED`, `CORE_CRASHED`, `CORE_API_UNREACHABLE`, `PORT_IN_USE`, `DNS_BOOTSTRAP_FAILED`, `NODE_UNREACHABLE`, `NODE_HANDSHAKE_FAILED`, `NODE_AUTH_FAILED`, `PROBE_TIMEOUT`, `PROBE_FAILED`, `ALL_NODES_FAILED`, `SYSTEM_PROXY_SET_FAILED`, `SYSTEM_PROXY_RESTORE_FAILED`, `NETWORK_CHANGED` |
 | Helper / TUN | `HELPER_NOT_INSTALLED`, `HELPER_INSTALL_CANCELLED`, `HELPER_INSTALL_FAILED`, `HELPER_UNINSTALL_FAILED`, `HELPER_UNREACHABLE`, `HELPER_VERSION_MISMATCH`, `HELPER_AUTH_FAILED`, `TUN_START_FAILED`, `KILL_SWITCH_FAILED`, `KILL_SWITCH_REMOVE_FAILED` |
 | Recovery | `TUN_STOP_FAILED`, `ROUTE_RESTORE_FAILED`, `DNS_RESTORE_FAILED`, `IPV6_RESTORE_FAILED`, `JOURNAL_CORRUPT`, `RESTORE_INCOMPLETE` (item-level codes appear in `RestoreItem.errorCode`; `SYSTEM_PROXY_RESTORE_FAILED`, `KILL_SWITCH_REMOVE_FAILED`, `HELPER_UNREACHABLE` are also used there) |
-| Rules | `RULES_DOWNLOAD_FAILED`, `RULES_VALIDATION_FAILED`, `RULES_UPDATE_IN_PROGRESS` |
+| Rules | `RULES_DOWNLOAD_FAILED`, `RULES_VALIDATION_FAILED`, `RULES_UPDATE_IN_PROGRESS`, `RULES_MISSING` |
 | App | `SETTINGS_INVALID`, `SETTINGS_SAVE_FAILED`, `LAUNCH_AT_LOGIN_FAILED`, `DIAGNOSTICS_EXPORT_FAILED`, `DIAGNOSTICS_NOT_FOUND`, `WINDOW_UNAVAILABLE` |
 
 `ErrorCode` is a closed string union in TS; the UI should still render unknown codes

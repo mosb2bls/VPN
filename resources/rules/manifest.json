@@ -1,0 +1,26 @@
+{
+  "_comment": "Bundled rule-sets (sing-box binary .srs). Pinned to exact commits of SagerNet's official rule-set branches; sha256 computed on download and cross-checked against the git blob hash reported by the GitHub API. Files are fetched by `npm run fetch-core` (gitignored) and embedded checks use this file. Updating: change commit + sha256 + size + gitBlob together.",
+  "version": "2026.10.10",
+  "sets": [
+    {
+      "name": "geosite-cn",
+      "repo": "SagerNet/sing-geosite",
+      "commit": "df6851d87aeaeb9d6a9464288b317e7ff2288d78",
+      "committedAt": "2026-10-10T05:07:39Z",
+      "path": "geosite-cn.srs",
+      "size": 56189,
+      "gitBlob": "4ec3958516f6d8e2aaf6c793f5b92ea742992074",
+      "sha256": "7e5edaa3156918ebb732629f7b4ab3f03040b9940456438f976c2046033fc15c"
+    },
+    {
+      "name": "geoip-cn",
+      "repo": "SagerNet/sing-geoip",
+      "commit": "7fe82a879ad2666526730c195b55a6d8d9147908",
+      "committedAt": "2026-09-12T12:00:47Z",
+      "path": "geoip-cn.srs",
+      "size": 34185,
+      "gitBlob": "a709ce79dc49bd966ecd9ac6067af12d45e0cf70",
+      "sha256": "ebee603fdf402314b44b9f653cdcf6d9cc9c41e84e2b3515e3123c5c920a93bc"
+    }
+  ]
+}

@@ -10,7 +10,7 @@
     "tauri": "tauri",
     "test:rust": "cargo test --workspace",
     "gen:bindings": "UPDATE_BINDINGS=1 cargo test -p edge-app --lib bindings_are_current",
-    "fetch-core": "node scripts/fetch-sing-box.mjs"
+    "fetch-core": "node scripts/fetch-sing-box.mjs && node scripts/fetch-rules.mjs"
   },
   "dependencies": {
     "@fontsource-variable/archivo": "5.3.0",

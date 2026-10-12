@@ -119,6 +119,7 @@ error_codes! {
     RulesDownloadFailed => "Rule update failed to download. The current rules are still in use.",
     RulesValidationFailed => "Downloaded rules were invalid. The current rules are still in use.",
     RulesUpdateInProgress => "A rule update is already running.",
+    RulesMissing => "Routing rules are missing or damaged. Reinstall the app.",
 
     // App
     SettingsInvalid => "One or more settings are invalid.",

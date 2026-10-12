@@ -1,5 +1,6 @@
 pub mod api;
 mod core_bin;
+mod rules;
 mod shell;
 mod state;
 mod store;
@@ -34,7 +35,16 @@ fn load_state(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             Ok(k) => Box::new(k),
             Err(e) => Box::new(store::secrets::Unavailable(e)),
         };
-    let (data, warnings) = state::AppData::load(&dir, secrets);
+    let (mut data, mut warnings) = state::AppData::load(&dir, secrets);
+    let active_rules = app.path().app_data_dir()?.join("rules");
+    data.rules = rules::ensure_active(
+        &rules::embedded_manifest(),
+        &rules::bundled_dir(app.path().resource_dir().ok()),
+        &active_rules,
+    );
+    if let Err(e) = &data.rules {
+        warnings.push(e.clone());
+    }
     app.manage(api::commands::AppState::new(data));
     for w in warnings {
         // TODO(B2 logging): also record in the redacted log.

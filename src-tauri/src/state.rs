@@ -13,6 +13,8 @@ pub struct AppData {
     pub prefs: PrefsStore,
     /// Runtime connection status (not persisted; modes mirror `prefs`).
     pub status: Status,
+    /// Verified active rule-sets, or why they are unavailable.
+    pub rules: Result<crate::rules::ActiveRules, AppError>,
 }
 
 impl AppData {
@@ -38,6 +40,7 @@ impl AppData {
             tun_active: false,
             last_restore: None,
         };
-        (Self { nodes, prefs, status }, warnings)
+        let rules = Err(AppError::new(crate::api::error::ErrorCode::RulesMissing).with_detail("not loaded yet"));
+        (Self { nodes, prefs, status, rules }, warnings)
     }
 }

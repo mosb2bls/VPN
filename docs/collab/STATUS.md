@@ -4,19 +4,22 @@ Each agent edits only its own section.
 
 ## Backend
 
-- **Phase/step:** B2.5 — sing-box config generation (done, awaiting owner review). Next:
-  B2.6 bundled rule-sets; B2.7 system proxy mode (core process, Clash API, OS proxy +
-  journal/restore); B2.8 real-server harness.
-- **SPEC version:** 1.2.1 (`docs/SPEC.md`, `src/api/bindings.ts`)
-- **Core:** `npm run fetch-core` installs the verified binary into `src-tauri/binaries/`
-  (gitignored). Not required to build; required to connect (B2.5+).
+- **Phase/step:** B2.6 — bundled, pinned rule-sets (done, awaiting owner review). Next:
+  B2.7 system proxy mode (core process, Clash API, OS proxy + journal/restore); B2.8
+  real-server harness; rule auto-update after that.
+- **SPEC version:** 1.3.0 (`docs/SPEC.md`, `src/api/bindings.ts`)
+- **Core + rules:** `npm run fetch-core` installs the verified sing-box binary into
+  `src-tauri/binaries/` and the rule-sets into `resources/rules/` (both gitignored). Not
+  required to build; required to connect (B2.7+). Without the rules, startup emits
+  `errorRaised(RULES_MISSING)`.
 - **Real:** node list / import (text + clipboard + QR image) / add / update / delete / reorder /
   select, persisted (`nodes.json` + one OS keychain item); all settings getters/setters
   persisted (`settings.json`); mode setters persisted; `get_app_info`; windows + tray
   (REQ-1); link parsing/validation; restore orchestration logic (unit-tested, no OS steps).
 - **Stored but not applied yet:** launch at login, auto-connect, close-to-tray (B5);
   failover/safety settings (B3/B4).
-- **Placeholder data:** `get_rules_status`, `get_helper_status` (not installed),
+- **Rules:** `get_rules_status` real (bundled set). `update_rules_now` stubbed.
+- **Placeholder data:** `get_helper_status` (not installed),
   `get_logs` (empty). No placeholder nodes any more.
 - **Stubbed (`NOT_IMPLEMENTED`):** `test_node`, `connect`,
   `update_rules_now`, install/uninstall helper, `export_diagnostics`,

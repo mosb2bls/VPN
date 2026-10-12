@@ -35,6 +35,8 @@ tests/integration/out/
 # Downloaded binaries — fetched + SHA-256 verified at build time
 # ---------------------------------------------------------------------------
 /resources/bin/
+/resources/rules/*.srs
+/resources/rules/*.tmp
 /src-tauri/binaries/
 /.cache/
 
