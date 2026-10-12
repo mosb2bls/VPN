@@ -25,7 +25,7 @@ no `ring` dependency, so the Windows code can be compile-checked from macOS (as
 (`ShellExecuteExW`, verb `runas` → the standard UAC prompt; cancel →
 `HELPER_INSTALL_CANCELLED`). `install` does the following:
 - refuses unless the bundled sing-box matches the embedded SHA-256 (as on macOS);
-- copies the helper, sing-box and rule-sets to `%ProgramFiles%\EdgeClient\Helper\`
+- copies the helper, sing-box and rule-sets to `%ProgramFiles%\Lynnk\Helper\`
   (writable by administrators only, so a user process cannot swap the binaries);
 - creates the service and sets its failure actions;
 - records the installing user's SID.
@@ -77,7 +77,7 @@ Therefore, if the service itself dies, the block disappears instead of locking t
 offline. The SCM restart then recovers from the journal. This is the same "never strand the
 user" trade-off as the macOS pf token.
 
-**Journal and recovery.** The journal lives in `%ProgramData%\EdgeClient\Helper\`, readable
+**Journal and recovery.** The journal lives in `%ProgramData%\Lynnk\Helper\`, readable
 and writable by SYSTEM and administrators only. On service start, recovery works as
 `recover_at_start` does on macOS: stop a stale core (only if that PID still runs our
 binary) and report what was restored.

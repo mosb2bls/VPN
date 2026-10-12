@@ -1,9 +1,9 @@
-# EdgeClient
+# Lynnk
 
 Personal desktop proxy client (macOS Apple Silicon, Windows x64) for a single self-hosted
 server: Hysteria 2 (primary) and VLESS + REALITY + XTLS Vision (fallback), using the
 [sing-box](https://github.com/SagerNet/sing-box) core (pinned, checksum-verified).
-"EdgeClient" is a working name.
+Formerly called "EdgeClient"; internal identifiers keep that name (`io.github.mosb2bls.edgeclient`).
 
 - Contract between backend and UI: [`docs/SPEC.md`](docs/SPEC.md)
 - Tests and results: [`docs/TESTING.md`](docs/TESTING.md) · design decisions: [`docs/adr/`](docs/adr/)
@@ -21,12 +21,12 @@ server: Hysteria 2 (primary) and VLESS + REALITY + XTLS Vision (fallback), using
 
 Builds are not code-signed or notarised.
 
-**macOS (Apple Silicon).** Open the `.dmg`, drag EdgeClient to Applications. The first
+**macOS (Apple Silicon).** Open the `.dmg`, drag Lynnk to Applications. The first
 launch is blocked by Gatekeeper ("cannot be opened because Apple cannot check it…"):
 
 1. Try to open it once, then open **System Settings → Privacy & Security**, scroll to
-   "EdgeClient was blocked…", click **Open Anyway**, confirm with your password; or
-2. In Terminal: `xattr -dr com.apple.quarantine /Applications/EdgeClient.app`
+   "Lynnk was blocked…", click **Open Anyway**, confirm with your password; or
+2. In Terminal: `xattr -dr com.apple.quarantine /Applications/Lynnk.app`
 
 The app lives in the menu bar (no Dock icon). TUN mode asks for your administrator
 password once to install its helper (Settings → Helper).
@@ -37,7 +37,7 @@ PC": click **More info → Run anyway**. (TUN / Windows service: not yet availab
 ## If networking is left in a bad state
 
 - Tray menu → **Restore networking**, or
-- Terminal: `/Applications/EdgeClient.app/Contents/MacOS/edge-app --restore-networking`
+- Terminal: `/Applications/Lynnk.app/Contents/MacOS/edge-app --restore-networking`
   (prints a per-item report; exit code 0 = restored).
 
 ## Build from source

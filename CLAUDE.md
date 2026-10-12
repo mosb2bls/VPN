@@ -1,9 +1,12 @@
-# EdgeClient — instructions for all agents
+# Lynnk — instructions for all agents
 
 Personal desktop VPN/proxy client (Tauri v2 + Rust + sing-box) for macOS arm64 and
 Windows x64, connecting only to the owner's server (Hysteria2 UDP 24443 primary,
-VLESS + REALITY + XTLS Vision TCP 443 fallback). "EdgeClient" is a placeholder
-name defined in `crates/core/src/lib.rs` (`APP_NAME`) and `src-tauri/tauri.conf.json`.
+VLESS + REALITY + XTLS Vision TCP 443 fallback). The product name is "Lynnk" (owner
+decision 2026-10-12; formerly the placeholder "EdgeClient"), defined in
+`crates/core/src/lib.rs` (`APP_NAME`), `src-tauri/tauri.conf.json` and, for the UI,
+`src/lib/brand.ts`. Identifiers keep `edgeclient` (`io.github.mosb2bls.edgeclient`, the
+helper service and paths, the pf anchor) so existing keychain items and installs survive.
 
 Two Claude Code sessions work in this one folder on `main`, plus a third on the owner's
 Windows PC:

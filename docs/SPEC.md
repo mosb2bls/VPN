@@ -1,6 +1,6 @@
-# EdgeClient — Backend ↔ UI Interface Specification
+# Lynnk — Backend ↔ UI Interface Specification
 
-**Spec version:** 1.4.3
+**Spec version:** 1.4.4
 **Status:** approved; includes REQ-1 to REQ-4 (Phase B1). "1.0.0" marks a breaking change, not feature completeness — most commands are still stubs.
 **Generated bindings:** `src/api/bindings.ts` (from `src-tauri/src/api/*`, via tauri-specta `=2.0.0-rc.25`)
 
@@ -12,6 +12,7 @@ the disagreement is a backend bug — file a REQ.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.4.4 | 2026-10-12 | **Behaviour:** product renamed to **Lynnk** (owner decision): `getAppInfo().appName`, window titles ("Lynnk", "Lynnk Settings"), tray tooltip / menu ("Quit Lynnk"), diagnostics file name, macOS admin prompt text ("Lynnk wants to install or remove its network helper."), Windows install folders (`%LOCALAPPDATA%\Lynnk`, `%ProgramFiles%\Lynnk\Helper`, `%ProgramData%\Lynnk\Helper`), service display name "Lynnk Helper". Unchanged: identifier `io.github.mosb2bls.edgeclient` (keychain, data dirs, helper paths on macOS, Windows service name), pf anchor. No type changes. |
 | 1.4.3 | 2026-10-12 | **Behaviour:** single instance — launching the app while it runs (e.g. Start menu while the login item runs) opens the running app's Settings window instead of a second instance. Windows uninstaller first restores networking (`--restore-networking`) and removes the TUN helper service if installed (one UAC prompt). No type changes. |
 | 1.4.2 | 2026-10-12 | **Behaviour (B3.2, Windows — untested):** `install_helper` / `uninstall_helper` / `get_helper_status` work on Windows (UAC prompt → Windows service); `connect` in TUN mode runs through it (Wintun, IPv6 captured and rejected, WFP kill switch on core crash, re-attach after app crash) — same contract as macOS. Install errors carry the helper's message in `detail`. ADR-0007. No type changes. |
 | 1.4.1 | 2026-10-12 | **Behaviour:** Windows system proxy mode implemented (WinINet per-user settings, journal, exact restore; ADR-0004 addendum) — **untested on Windows** (checklist W-SYSPROXY). TUN / helper on Windows still → `UNSUPPORTED_PLATFORM` / `HELPER_NOT_INSTALLED`. No type changes. |
@@ -284,7 +285,7 @@ attempt, scheduled or manual, is also emitted as `rulesUpdated`.
   restore first). The popover always hides.
 - `AppSettings` defaults: launch at login off, auto-connect off, close-to-tray on, rule
   auto-update on every 24 h, log level `info`.
-- `export_diagnostics` writes `EdgeClient-diagnostics-<UTC time>.zip` (mode 0600, never
+- `export_diagnostics` writes `Lynnk-diagnostics-<UTC time>.zip` (mode 0600, never
   overwrites) to the user's Downloads folder and returns its path; it is never uploaded.
   Contents: `README.txt`, `info.json` (versions, OS, arch), `status.json`, `settings.json`,
   `nodes.json` (id, name, protocol, port, last test — no server, no secrets), `rules.json`,
@@ -295,7 +296,7 @@ attempt, scheduled or manual, is also emitted as `rulesUpdated`.
 - `restore_networking` is safe at any time: it disconnects, restores system proxy,
   routes, DNS, IPv6 and firewall from the journal (or to known-safe defaults for items we
   own, such as removing our pf anchor), and stops any core. The same is available without
-  the UI as `EdgeClient --restore-networking`.
+  the UI as `Lynnk --restore-networking`.
 - `quit_app`: disconnect → restore → exit. Exits even if restore is incomplete; the
   journal is kept so the next launch (or helper) finishes the restore.
 
@@ -361,7 +362,7 @@ routes on the window label.
 | Label | Size | Behaviour |
 |---|---|---|
 | `popover` | 340 × 480 logical, fixed | Frameless, **opaque with the native OS shadow** (owner decision), not resizable, always on top, not in the taskbar, visible on all macOS Spaces, first click accepted. Tray icon **left-click toggles** it; it is placed next to the tray icon (below the macOS menu bar; next to the Windows taskbar on whichever edge, on the icon's monitor) and kept fully inside the monitor's work area. **Hides on blur** (losing focus); a tray click within 300 ms of a blur-hide counts as "close", not "reopen". Esc → the UI calls `hide_popover`. Every hide, for any reason, is followed by `popoverHidden`; a webview `blur` is **not** guaranteed when the tray icon toggles it closed (macOS). File drag-and-drop disabled. |
-| `settings` | 760 × 560, min 640 × 480, resizable | Normal decorations, title "EdgeClient Settings", centred. Close button hides it; the app keeps running in the tray. File drag-and-drop **enabled** (QR image drop → `import_qr_image({kind:"path"})`). |
+| `settings` | 760 × 560, min 640 × 480, resizable | Normal decorations, title "Lynnk Settings", centred. Close button hides it; the app keeps running in the tray. File drag-and-drop **enabled** (QR image drop → `import_qr_image({kind:"path"})`). |
 
 macOS: the app is a menu-bar (accessory) app — **no Dock icon**; the settings window still
 focuses normally.
@@ -383,14 +384,14 @@ request more permissions via REQUESTS.md.
 Ctrl-click; left-click toggles the popover — macOS right-click behaviour **untested**).
 Rebuilt on every status / node change:
 
-1. `EdgeClient — <state>` (disabled header)
+1. `Lynnk — <state>` (disabled header)
 2. Connect / Disconnect (label follows state)
 3. Node: `<active or selected>` ▸ node list (check = selected)
 4. Routing mode ▸ Rule / Global / Direct
 5. Capture mode ▸ System proxy / TUN (whole device)
 6. Restore networking
 7. Settings… (= `open_settings(null)`)
-8. Quit EdgeClient
+8. Quit Lynnk
 
 Tray actions run the same backend operations as the commands. A tray action that fails
 emits `errorRaised` (so the UI can show it); state changes arrive as the usual
@@ -658,8 +659,8 @@ Things the UI must explain to the user (wording is the UI's choice; substance is
    stops, apps fall back to direct connections. Recommend TUN mode for full-device
    protection.
 3. **TUN mode needs a one-time privileged helper install** (macOS shows its standard
-   administrator password dialog, worded by macOS: "EdgeClient wants to make changes" /
-   osascript). macOS may also show a "Background Items Added" notification. Explain before calling
+   administrator password dialog with our text: "Lynnk wants to install or remove its
+   network helper."). macOS may also show a "Background Items Added" notification. Explain before calling
    `install_helper` that macOS will ask for an administrator password (Windows: UAC),
    what the helper does (runs the bundled proxy core with a TUN interface, applies the
    kill switch, restores networking), and that it can be uninstalled from the app.

@@ -1371,7 +1371,7 @@ pub fn cli_data_dir() -> Option<PathBuf> {
     }
 }
 
-/// `EdgeClient --restore-networking`: restore without the UI. Exit code 0 if
+/// `Lynnk --restore-networking`: restore without the UI. Exit code 0 if
 /// fully restored (or nothing to do), 2 if incomplete, 1 on usage errors.
 pub fn restore_cli() -> i32 {
     let Some(dir) = cli_data_dir() else {

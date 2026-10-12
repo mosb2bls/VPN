@@ -28,7 +28,7 @@ pub const LAUNCHD_PLIST: &str = "/Library/LaunchDaemons/io.github.mosb2bls.edgec
 /// Windows service name and named pipe (ADR-0007). Install / data folders are
 /// known-folder based (`edge_winsys::paths`).
 pub const WIN_SERVICE_NAME: &str = "io.github.mosb2bls.edgeclient.helper";
-pub const WIN_SERVICE_DISPLAY: &str = "EdgeClient Helper";
+pub const WIN_SERVICE_DISPLAY: &str = "Lynnk Helper";
 pub const WIN_PIPE_NAME: &str = r"\\.\pipe\io.github.mosb2bls.edgeclient.helper";
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]

@@ -1,4 +1,4 @@
-//! EdgeClient privileged helper: macOS launchd daemon (ADR-0005) or Windows
+//! Lynnk privileged helper: macOS launchd daemon (ADR-0005) or Windows
 //! service (ADR-0007).
 //!
 //!   edge-helper serve                                           (launchd / SCM)

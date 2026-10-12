@@ -62,7 +62,7 @@ then stop the core.
 an app crash the proxy points at a dead port (traffic fails closed). On launch, if a journal
 exists: `recovering` → kill the stale core (only if that PID still runs the recorded
 executable) → restore → `disconnected` or `error`, reported via `lastRecovery`,
-`recoveryCompleted`, `restoreReportChanged`. `EdgeClient --restore-networking` runs the same
+`recoveryCompleted`, `restoreReportChanged`. `Lynnk --restore-networking` runs the same
 restore without the UI (exit 0 = nothing to do / fully restored, 2 = incomplete).
 
 **Core crash while connected.** Restart with backoff 1, 2, 4, 8, 16, 30 s… for up to 5

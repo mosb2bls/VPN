@@ -1,4 +1,4 @@
-//! EdgeClient core: pure Rust, no OS side effects.
+//! Lynnk core: pure Rust, no OS side effects.
 //!
 //! Holds the product identity, stable error codes and restore orchestration.
 //! Parsing, config generation, rules, DNS, failover logic and redaction arrive
@@ -7,10 +7,10 @@
 /// User-visible product name. Rename the product here and in
 /// `src-tauri/tauri.conf.json` (`productName`, window `title`s); the
 /// `name_matches_tauri_conf` test fails if the two drift apart.
-pub const APP_NAME: &str = "EdgeClient";
+pub const APP_NAME: &str = "Lynnk";
 
 /// Lowercase slug for file names, keychain service names, socket/pipe names.
-pub const APP_SLUG: &str = "edgeclient";
+pub const APP_SLUG: &str = "lynnk";
 
 /// Bundle identifier (must equal `identifier` in `src-tauri/tauri.conf.json`).
 /// Also the name of the app's config/data folder and keychain service.

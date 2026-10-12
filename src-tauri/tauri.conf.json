@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "EdgeClient",
+  "productName": "Lynnk",
   "version": "0.1.0",
   "identifier": "io.github.mosb2bls.edgeclient",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "popover",
-        "title": "EdgeClient",
+        "title": "Lynnk",
         "url": "/",
         "width": 340,
         "height": 480,
@@ -33,7 +33,7 @@
       },
       {
         "label": "settings",
-        "title": "EdgeClient Settings",
+        "title": "Lynnk Settings",
         "url": "/",
         "width": 760,
         "height": 560,

@@ -3,7 +3,7 @@
   Network-state snapshot / compare for the Windows checklist (docs/TESTING.md §3, W-BASELINE).
 
 .DESCRIPTION
-  Captures what EdgeClient may change and must restore: routes, adapters, DNS servers,
+  Captures what Lynnk may change and must restore: routes, adapters, DNS servers,
   NRPT rules, IPv6 bindings, WinINet proxy settings (registry + DefaultConnectionSettings),
   WinHTTP proxy, firewall rules with our names, the helper service, and (elevated only) the
   number of our WFP kill-switch filters.
@@ -23,7 +23,7 @@ param(
   [string]$Compare
 )
 $ErrorActionPreference = 'Stop'
-$App = 'EdgeClient'                                  # edge_core::APP_NAME
+$App = 'Lynnk'                                       # edge_core::APP_NAME
 $Service = 'io.github.mosb2bls.edgeclient.helper'    # helper_proto::WIN_SERVICE_NAME
 
 function Get-Sorted($items) {

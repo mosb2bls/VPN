@@ -137,7 +137,7 @@ mod mac {
         logbuf::global().set_redactor(redactor.clone());
 
         println!(
-            "EdgeClient harness | {} | sing-box {} | DNS profile {:?} | system-proxy shape, Rule routing, OS settings untouched",
+            "Lynnk harness | {} | sing-box {} | DNS profile {:?} | system-proxy shape, Rule routing, OS settings untouched",
             edge_core::clock::now_rfc3339(),
             edge_app_lib::core_bin::CORE_VERSION,
             dns

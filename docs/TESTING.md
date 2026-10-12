@@ -1,4 +1,4 @@
-# EdgeClient — Testing
+# Lynnk — Testing
 
 Results are recorded **redacted** (no hostnames, IPs, passwords, UUIDs, keys, short IDs or
 links). Nothing here is "working" until a dated result row says so.
@@ -30,7 +30,7 @@ npx tsc --noEmit -p .      # TypeScript check of the generated bindings (+ UI co
 | Failover engine (B4) | `edge-core` `failover::tests::*` — 3 failed rounds → switch with the exact reason text; **one website failing never switches**; intermittent failures reset the streak; return needs dwell + 10 min continuous primary health (a single failure restarts the timer); all-failing reported once and blocks; **direct fallback engages and leaves when a node recovers**; rescue switch inside dwell; rate limit; disabled; no fallback | passing |
 | Rule updates (B2) | `edge-app` `rules_update::tests::*` — real sing-box: bundled rules validate, swapped / corrupt files rejected, failed swap restores old files; due-time logic; `rules::tests::*` active manifest. Opt-in real download `real_rules_update` (GitHub): **passed** 2026-10-12 (agent) — newest commits equal the bundle → "already current" | passing |
 | Diagnostics (B2) | `edge-app` `diagnostics::tests::zip_contains_no_secrets_or_servers` — fake secrets, UUID, short ID, REALITY key, server host / IP and SNIs all absent from the zip; never overwrites | passing |
-| Packaging (B6) | Local `tauri build --config src-tauri/tauri.bundle.macos.json --bundles app` (2026-10-12, macOS arm64): `EdgeClient.app/Contents/MacOS/{edge-app, edge-helper, sing-box}`, rules in `Contents/Resources/resources/rules`; bundled sing-box hash = pinned hash; release app starts with no startup warnings (rules found); `--restore-networking` works from the bundle. CI workflow `.github/workflows/ci.yml` written, **not yet run** | partial |
+| Packaging (B6) | Local `tauri build --config src-tauri/tauri.bundle.macos.json --bundles app` (2026-10-12, macOS arm64): `Lynnk.app/Contents/MacOS/{edge-app, edge-helper, sing-box}`, rules in `Contents/Resources/resources/rules`; bundled sing-box hash = pinned hash; release app starts with no startup warnings (rules found); `--restore-networking` works from the bundle. CI workflow `.github/workflows/ci.yml` written, **not yet run** | partial |
 | Field validators / masking | `edge-core` `validate::tests::*`, `secret::tests::*` | passing |
 | Restore orchestration (REQ-4) | `edge-core` `restore::tests::*` — all restored; not-needed is clean; **failing DNS restore → incomplete, reported per item**; a failure never stops later items; skipped = incomplete; firewall restored last; held state stays true for items that were not restored | passing (logic only, fake restorer) |
 | Restore wire format (REQ-4) | `edge-app` `api::types::tests::restore_incomplete_error_carries_per_item_report` | passing |
@@ -84,7 +84,7 @@ Everything else runs in a normal PowerShell window as the signed-in user.
 ### 3.0 Setup (once per PowerShell window)
 
 ```powershell
-$Inst = "$env:LOCALAPPDATA\EdgeClient"     # per-user install dir (NSIS default)
+$Inst = "$env:LOCALAPPDATA\Lynnk"     # per-user install dir (NSIS default)
 $App  = Get-ChildItem $Inst -Filter *.exe | Where-Object Name -notin 'sing-box.exe','edge-helper.exe','uninstall.exe' | Select-Object -First 1
 $Svc  = 'io.github.mosb2bls.edgeclient.helper'
 $Snap = 'C:\edge-test'                      # local only
@@ -151,13 +151,13 @@ legitimately differ.
 ### W-INSTALL — installer install / uninstall (partly elevated)
 
 1. Elevated: `Snapshot pre-install`.
-2. Run `EdgeClient_<version>_x64-setup.exe` from the CI artifact. SmartScreen warns
+2. Run `Lynnk_<version>_x64-setup.exe` from the CI artifact. SmartScreen warns
    because the installer is unsigned: More info → Run anyway.
    **Pass:**
    - no UAC prompt (per-user install);
    - `Test-Path $Inst\sing-box.exe, $Inst\edge-helper.exe, $Inst\resources\rules\geosite-cn.srs` → all `True`;
    - a Start-menu entry exists, and the app starts in the tray.
-3. Uninstall without the helper: Settings → Apps → Installed apps → EdgeClient → Uninstall
+3. Uninstall without the helper: Settings → Apps → Installed apps → Lynnk → Uninstall
    (or `& "$Inst\uninstall.exe"`).
    **Pass:**
    - no UAC prompt;
@@ -170,7 +170,7 @@ legitimately differ.
    while connected. **Pass:**
    - exactly **one** UAC prompt (helper removal), which you accept;
    - afterwards `Get-Service $Svc -ErrorAction SilentlyContinue` → nothing;
-   - `Test-Path "$env:ProgramFiles\EdgeClient\Helper", "$env:ProgramData\EdgeClient\Helper"` → `False, False`;
+   - `Test-Path "$env:ProgramFiles\Lynnk\Helper", "$env:ProgramData\Lynnk\Helper"` → `False, False`;
    - elevated: `Snapshot post-uninstall2 pre-install` → identical (no Wintun adapter, `wfpKillSwitchFilters` 0).
 5. Repeat step 4 connected in **System proxy** mode. **Pass:** `internetSettings` and
    `defaultConnectionSettings` are `same`.
@@ -200,8 +200,8 @@ this mode. This is documented; use TUN for whole-device protection.
 2. Install again and accept. **Pass:**
    - `Get-Service $Svc | Format-List Status,StartType` → Running / Automatic;
    - `(Get-CimInstance Win32_Service -Filter "Name='$Svc'").StartName` → `LocalSystem`;
-   - `Get-ChildItem "$env:ProgramFiles\EdgeClient\Helper" | Select-Object Name` → `edge-helper.exe`, `sing-box.exe`;
-   - as your normal user, `Get-ChildItem "$env:ProgramData\EdgeClient\Helper"` → access denied;
+   - `Get-ChildItem "$env:ProgramFiles\Lynnk\Helper" | Select-Object Name` → `edge-helper.exe`, `sing-box.exe`;
+   - as your normal user, `Get-ChildItem "$env:ProgramData\Lynnk\Helper"` → access denied;
    - `Test-Path '\\.\pipe\io.github.mosb2bls.edgeclient.helper'` → `True`;
    - the app shows the helper as installed and running.
 3. Settings → Uninstall helper (one UAC prompt). **Pass:** the service is gone and both
@@ -277,7 +277,7 @@ browser.
    During the loop, in a second elevated window: `LocDirect` → no output or a failure
    (no direct traffic). Then:
    ```powershell
-   netsh wfp show filters file="$Snap\wfp.xml" | Out-Null; (Select-String -Path "$Snap\wfp.xml" -Pattern 'EdgeClient kill switch' -SimpleMatch).Count
+   netsh wfp show filters file="$Snap\wfp.xml" | Out-Null; (Select-String -Path "$Snap\wfp.xml" -Pattern 'Lynnk kill switch' -SimpleMatch).Count
    ```
    **Pass:**
    - the count is > 0 and the download stalls;

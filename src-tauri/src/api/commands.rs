@@ -669,7 +669,7 @@ pub async fn export_diagnostics(app: AppHandle) -> ApiResult<DiagnosticsExport> 
     entries.insert(0, Entry { name: "info.json".into(), text: pretty(&info) });
     entries.insert(0, Entry {
         name: "README.txt".into(),
-        text: "EdgeClient diagnostics. Credentials (passwords, UUIDs, REALITY keys, short IDs, obfs \
+        text: "Lynnk diagnostics. Credentials (passwords, UUIDs, REALITY keys, short IDs, obfs \
 passwords, share links) and the proxy servers' hostnames / IPs are replaced with [redacted] / \
 [host]. Nothing was uploaded; share this file only if you choose to.\n"
             .into(),

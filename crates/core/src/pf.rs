@@ -1,4 +1,5 @@
-//! macOS pf kill-switch rules (anchor `com.apple/250.EdgeClient`, loaded by
+//! macOS pf kill-switch rules (anchor `com.apple/250.EdgeClient` — the pre-rename name,
+//! kept so a newer helper still finds and removes rules an older one left; loaded by
 //! the stock `/etc/pf.conf` via `anchor "com.apple/*"` — pf.conf is never
 //! edited). Engaged by the helper only while the TUN core is down
 //! unexpectedly; removed when it is back or the user disconnects.
@@ -26,7 +27,7 @@ pub struct ServerRule {
 
 pub fn rules(servers: &[ServerRule], allow_lan: bool) -> String {
     let mut r = String::new();
-    r.push_str("# EdgeClient kill switch (generated; removed on disconnect)\n");
+    r.push_str("# Lynnk kill switch (generated; removed on disconnect)\n");
     r.push_str("pass out quick on lo0 all\n");
     r.push_str("pass out quick inet proto udp from any port 68 to any port 67\n");
     r.push_str("pass out quick inet to { 169.254.0.0/16, 224.0.0.0/4, 255.255.255.255 }\n");

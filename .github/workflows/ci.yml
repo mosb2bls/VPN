@@ -83,7 +83,7 @@ jobs:
         run: npm run bundle:mac
       - uses: actions/upload-artifact@v7
         with:
-          name: EdgeClient-macos-arm64-${{ github.sha }}
+          name: Lynnk-macos-arm64-${{ github.sha }}
           path: target/release/bundle/dmg/*.dmg
           if-no-files-found: error
 
@@ -104,6 +104,6 @@ jobs:
         run: npm run bundle:win
       - uses: actions/upload-artifact@v7
         with:
-          name: EdgeClient-windows-x64-${{ github.sha }}
+          name: Lynnk-windows-x64-${{ github.sha }}
           path: target/release/bundle/nsis/*.exe
           if-no-files-found: error

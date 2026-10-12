@@ -168,7 +168,11 @@ fn applescript_string(s: &str) -> String {
 #[cfg(target_os = "macos")]
 fn run_as_admin(argv: &[String], fail: ErrorCode) -> ApiResult<()> {
     let cmd = argv.iter().map(|a| sh_quote(a)).collect::<Vec<_>>().join(" ");
-    let script = format!("do shell script \"{}\" with administrator privileges", applescript_string(&cmd));
+    let script = format!(
+        "do shell script \"{}\" with prompt \"{} wants to install or remove its network helper.\" with administrator privileges",
+        applescript_string(&cmd),
+        applescript_string(edge_core::APP_NAME)
+    );
     let out = std::process::Command::new("/usr/bin/osascript")
         .arg("-e")
         .arg(script)
