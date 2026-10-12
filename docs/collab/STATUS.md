@@ -27,7 +27,10 @@ Each agent edits only its own section.
   rule-sets as resources) — macOS bundle verified locally. CI: tests + lint on every push to
   main; installers on `v*` tags or manual run (owner decision). README with Gatekeeper /
   SmartScreen steps.
-- **Not yet on Windows:** system proxy, helper / TUN / WFP kill switch (B3.2).
+- **Windows:** system proxy implemented (untested; W-SYSPROXY). Not yet: helper service,
+  TUN, firewall kill switch. Rust toolchain pinned to 1.99.0 (`rust-toolchain.toml`) so local
+  and CI lints match. First CI run: macOS tests passed (clippy fixed since); Windows linking
+  of the harness fixed (harness is macOS-only).
 - **Known issues:** `npm run tauri dev` fails if another Vite server holds port 1420; use
   `cargo run -p edge-app`. The helper binary must be built (`cargo build -p edge-helper`)
   before Install works in dev.

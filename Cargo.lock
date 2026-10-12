@@ -1010,6 +1010,7 @@ dependencies = [
  "apple-native-keyring-store",
  "base64 0.22.1",
  "edge-core",
+ "edge-winsys",
  "keyring-core",
  "libc",
  "percent-encoding",
@@ -1069,6 +1070,14 @@ dependencies = [
  "sha2",
  "ureq",
  "uuid",
+]
+
+[[package]]
+name = "edge-winsys"
+version = "0.1.0"
+dependencies = [
+ "edge-core",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

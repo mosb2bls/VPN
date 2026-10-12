@@ -87,3 +87,22 @@ the IP is never stored).
   probes are unaffected (they target the node explicitly), but end-to-end checks must use a
   non-CN target (the harness uses `http://cp.cloudflare.com/`).
 - Automatic failover between nodes: B4 (here only `connected` ↔ `degraded`).
+
+## Addendum (2026-10-12): Windows system proxy
+
+- WinINet per-user settings of the default (LAN) connection via
+  `InternetQueryOptionW` / `InternetSetOptionW(INTERNET_OPTION_PER_CONNECTION_OPTION)`
+  (flags, proxy server, bypass, PAC URL), then `INTERNET_OPTION_SETTINGS_CHANGED` +
+  `INTERNET_OPTION_REFRESH` — the documented API behind "Proxy settings" in Windows; it
+  updates the per-connection settings (including the binary DefaultConnectionSettings) rather
+  than writing registry values directly. Reference: Microsoft Learn, WinINet
+  `INTERNET_PER_CONN_OPTION_LISTW`, "Option Flags".
+- We set: flags DIRECT|PROXY (PAC and auto-detect off while connected), server
+  `127.0.0.1:<port>`, bypass `localhost;127.*;<local>` + LAN ranges if allowed. Previous
+  values are journaled first and restored exactly; if the current settings are no longer
+  ours (user changed them), they are left alone.
+- Code: pure decisions `edge_core::winproxy`; OS calls `crates/winsys` (no C toolchain
+  needed, compile-checked from macOS). **Untested on Windows** — checklist W-SYSPROXY.
+- Not covered: per-dial-up / VPN-connection proxy settings (only the default LAN
+  connection), WinHTTP (`netsh winhttp`) used by some services — documented limitation
+  of system-proxy mode.

@@ -1,6 +1,6 @@
 # EdgeClient — Backend ↔ UI Interface Specification
 
-**Spec version:** 1.4.0
+**Spec version:** 1.4.1
 **Status:** approved; includes REQ-1 to REQ-4 (Phase B1). "1.0.0" marks a breaking change, not feature completeness — most commands are still stubs.
 **Generated bindings:** `src/api/bindings.ts` (from `src-tauri/src/api/*`, via tauri-specta `=2.0.0-rc.25`)
 
@@ -12,6 +12,7 @@ the disagreement is a backend bug — file a REQ.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.4.1 | 2026-10-12 | **Behaviour:** Windows system proxy mode implemented (WinINet per-user settings, journal, exact restore; ADR-0004 addendum) — **untested on Windows** (checklist W-SYSPROXY). TUN / helper on Windows still → `UNSUPPORTED_PLATFORM` / `HELPER_NOT_INSTALLED`. No type changes. |
 | 1.4.0 | 2026-10-12 | **Additive:** `FailoverKind` value `switched_to_direct`; `FailoverStatus.direct`; error code `DIRECT_FALLBACK_ACTIVE`. **Behaviour:** direct fallback (`safety.directFallback`, default off) is implemented: when every node fails, traffic goes direct (unprotected) and returns to the proxy as soon as a node passes; with it off, all-failing is reported as `ALL_NODES_FAILED` and traffic stays blocked (§5). |
 | 1.3.6 | 2026-10-12 | **Behaviour:** `export_diagnostics` is real (zip in Downloads; contents and redaction in §2.6); `reveal_diagnostics` reveals it. No type changes. |
 | 1.3.5 | 2026-10-12 | **Behaviour (B2 rules):** `update_rules_now` and the scheduled update (setting `rulesAutoUpdate`, every `rulesUpdateIntervalHours`) are real: newest commits of SagerNet `rule-set` branches, validated (size, sanity matches, `sing-box check`), atomic swap, previous rules kept on failure. `RulesStatus` reports `source`, `updatedAt`, `lastCheckAt`, `nextCheckAt`, `updating`, `lastError`. No type changes. |
@@ -170,6 +171,10 @@ must be `null` in this version (non-null → `VALIDATION_FAILED`, field `pinSha2
 | `set_routing_mode` | `mode: RoutingMode` | `Status` | as `connect` when connected; `SETTINGS_SAVE_FAILED` | no | **persisted** |
 | `set_dns_profile` | `profile: DnsProfile` | `Status` | as `connect` when connected; `SETTINGS_SAVE_FAILED` | no | **persisted** |
 
+- **System proxy mode on Windows** (1.4.1, untested): sets the per-user WinINet proxy
+  (what Windows "Proxy settings" shows) to `127.0.0.1:<port>`, PAC / auto-detect off while
+  connected; previous settings journaled and restored exactly. Apps using WinHTTP only
+  (some system services) are not covered.
 - **System proxy mode (macOS, B2.7):** sets the HTTP, HTTPS and SOCKS proxy of every
   enabled network service to `127.0.0.1:<local port>` (previous settings journaled first
   and restored exactly; PAC / auto-discovery turned off while connected if they were on;

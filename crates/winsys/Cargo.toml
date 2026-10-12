@@ -1,0 +1,13 @@
+[package]
+name = "edge-winsys"
+description = "Windows OS integration without C dependencies (WinINet system proxy)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+edge-core.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Networking_WinInet", "Win32_System_Memory"] }

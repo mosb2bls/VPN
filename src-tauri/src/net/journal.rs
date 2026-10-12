@@ -30,7 +30,18 @@ pub struct ServiceRecord {
 #[serde(rename_all = "camelCase")]
 pub struct SystemProxyRecord {
     pub port: u16,
+    /// macOS: per network service.
     pub services: Vec<ServiceRecord>,
+    /// Windows: WinINet per-user settings.
+    #[serde(default)]
+    pub windows: Option<WinRecord>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct WinRecord {
+    pub prev: edge_core::winproxy::WinProxyState,
+    pub ours: edge_core::winproxy::WinProxyState,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]

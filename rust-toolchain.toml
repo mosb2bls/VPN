@@ -1,0 +1,6 @@
+# Same compiler and lints locally and in CI (CI otherwise follows "stable" and
+# can disagree with a developer machine). Bump deliberately.
+[toolchain]
+channel = "1.99.0"
+components = ["clippy", "rustfmt"]
+targets = ["aarch64-apple-darwin", "x86_64-pc-windows-msvc"]

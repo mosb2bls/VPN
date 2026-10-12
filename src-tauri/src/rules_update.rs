@@ -265,7 +265,8 @@ mod tests {
         assert!(!again.changed, "second check finds nothing new");
         let r = rules::ensure_active(&rules::embedded_manifest(), &bundle, active.path()).unwrap();
         assert!(r.geosite_cn.exists());
-        assert_eq!(rules::active_manifest(active.path()).source, Some(RulesSource::Downloaded).filter(|_| o.changed).or(Some(RulesSource::Bundled)));
+        let expected = if o.changed { RulesSource::Downloaded } else { RulesSource::Bundled };
+        assert_eq!(rules::active_manifest(active.path()).source, Some(expected));
     }
 
     #[test]

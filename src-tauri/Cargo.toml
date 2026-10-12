@@ -41,6 +41,7 @@ zip = { version = "9", default-features = false, features = ["deflate"] }
 apple-native-keyring-store = { version = "1", features = ["keychain"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
+edge-winsys = { path = "../crates/winsys" }
 windows-native-keyring-store = { version = "1", default-features = false }
 
 [dev-dependencies]

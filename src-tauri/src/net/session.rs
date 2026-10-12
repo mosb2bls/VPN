@@ -161,7 +161,10 @@ impl Restorer for SysProxyRestorer<'_> {
         match kind {
             RestoreItemKind::SystemProxy => match self.journal.and_then(|j| j.system_proxy.as_ref()) {
                 None => StepOutcome::NotNeeded { action: "System proxy was not changed by this app".into() },
-                Some(rec) => osproxy::restore(self.runner, &rec.services),
+                Some(rec) => match &rec.windows {
+                    Some(w) => osproxy::win_restore(w),
+                    None => osproxy::restore(self.runner, &rec.services),
+                },
             },
             RestoreItemKind::TunSession => helper_outcome(&self.helper, "tun_session")
                 .unwrap_or(StepOutcome::NotNeeded { action: "No TUN session".into() }),
@@ -498,17 +501,28 @@ fn connect_blocking(app: &AppHandle, p: Plan) -> ApiResult<Status> {
         Err(e) => return Err(rollback(app, None, e)),
     };
     update_status(app, Some("Setting system proxy"), |_| {});
-    let r = runner();
-    let records = match osproxy::plan(r.as_ref(), mixed, p.allow_lan) {
+    // Snapshot first (nothing changed yet), journal it, then change.
+    let record = if cfg!(windows) {
+        osproxy::win_plan(mixed, p.allow_lan)
+            .map(|w| SystemProxyRecord { port: mixed, services: vec![], windows: Some(w) })
+    } else {
+        osproxy::plan(runner().as_ref(), mixed, p.allow_lan)
+            .map(|services| SystemProxyRecord { port: mixed, services, windows: None })
+    };
+    let record = match record {
         Ok(x) => x,
         Err(e) => return Err(rollback(app, Some(core), e)),
     };
     let mut j = journal::load(&dir)?.unwrap_or_else(Journal::new);
-    j.system_proxy = Some(SystemProxyRecord { port: mixed, services: records.clone() });
+    j.system_proxy = Some(record.clone());
     if let Err(e) = journal::save(&dir, &j) {
         return Err(rollback(app, Some(core), e));
     }
-    if let Err(e) = osproxy::apply(r.as_ref(), &records, mixed, p.allow_lan) {
+    let applied = match &record.windows {
+        Some(w) => osproxy::win_apply(w),
+        None => osproxy::apply(runner().as_ref(), &record.services, mixed, p.allow_lan),
+    };
+    if let Err(e) = applied {
         return Err(rollback(app, Some(core), e));
     }
     update_status(app, Some("Running health check"), |s| s.system_proxy_set = true);
@@ -1400,7 +1414,7 @@ mod tests {
         let mac = FakeMac::with(&[svc("Wi-Fi"), svc("Thunderbolt Bridge")]);
         let records = osproxy::plan(&mac, 17890, true).unwrap();
         let mut j = Journal::new();
-        j.system_proxy = Some(SystemProxyRecord { port: 17890, services: records.clone() });
+        j.system_proxy = Some(SystemProxyRecord { port: 17890, services: records.clone(), windows: None });
         journal::save(dir.path(), &j).unwrap();
         osproxy::apply(&mac, &records, 17890, true).unwrap();
 

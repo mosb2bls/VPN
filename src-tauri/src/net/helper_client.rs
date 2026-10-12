@@ -2,6 +2,7 @@
 //! go through the standard macOS administrator prompt (`osascript … with
 //! administrator privileges`), running the helper binary's own install code.
 
+#[cfg(unix)]
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -96,6 +97,7 @@ pub fn dto() -> HelperStatus {
 }
 
 /// Helper binary shipped with the app (dev: `target/<profile>/edge-helper`).
+#[cfg(target_os = "macos")]
 fn bundled_helper() -> ApiResult<PathBuf> {
     let dir = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)).unwrap_or_default();
     let p = dir.join("edge-helper");
@@ -107,10 +109,12 @@ fn bundled_helper() -> ApiResult<PathBuf> {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn sh_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
+#[cfg(target_os = "macos")]
 fn applescript_string(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
@@ -182,7 +186,7 @@ pub fn uninstall() -> ApiResult<HelperStatus> {
     Err(AppError::new(ErrorCode::UnsupportedPlatform).with_detail("Windows service: Windows phase"))
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "macos"))]
 mod tests {
     use super::*;
 

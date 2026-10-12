@@ -10,7 +10,9 @@ publish.workspace = true
 name = "edge-harness"
 path = "src/main.rs"
 
-[dependencies]
+# macOS only (local real-server testing). On Windows, depending on the Tauri
+# app crate breaks linking (tauri-build link args), so the harness is a stub.
+[target.'cfg(target_os = "macos")'.dependencies]
 edge-core.workspace = true
 edge-app = { path = "../../src-tauri" }
 tempfile = "3"

@@ -169,6 +169,80 @@ pub fn restore(r: &dyn Runner, records: &[ServiceRecord]) -> StepOutcome {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Windows (WinINet). Pure decisions in edge_core::winproxy; OS calls in
+// crates/winsys (compiled only on Windows).
+// ---------------------------------------------------------------------------
+
+/// Read + compute what we will set. Nothing is changed.
+pub fn win_plan(port: u16, allow_lan: bool) -> Result<crate::net::journal::WinRecord, AppError> {
+    let fail = |d: String| AppError::new(ErrorCode::SystemProxySetFailed).with_detail(d);
+    #[cfg(windows)]
+    {
+        let prev = edge_winsys::read_proxy().map_err(fail)?;
+        if let Some(r) = edge_core::winproxy::refuse_reason(&prev) {
+            return Err(fail(r));
+        }
+        let ours = edge_core::winproxy::ours(&prev, port, allow_lan);
+        Ok(crate::net::journal::WinRecord { prev, ours })
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (port, allow_lan);
+        Err(fail("Windows system proxy on a non-Windows OS".into()))
+    }
+}
+
+pub fn win_apply(rec: &crate::net::journal::WinRecord) -> Result<(), AppError> {
+    let fail = |d: String| AppError::new(ErrorCode::SystemProxySetFailed).with_detail(d);
+    #[cfg(windows)]
+    {
+        edge_winsys::write_proxy(&rec.ours).map_err(fail)?;
+        let now = edge_winsys::read_proxy().map_err(fail)?;
+        if now.flags != rec.ours.flags || now.server != rec.ours.server {
+            return Err(fail("settings did not take effect".into()));
+        }
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = rec;
+        Err(fail("Windows system proxy on a non-Windows OS".into()))
+    }
+}
+
+pub fn win_restore(rec: &crate::net::journal::WinRecord) -> StepOutcome {
+    #[cfg(windows)]
+    {
+        use edge_core::winproxy::{RestoreDecision, restore_target};
+        let failed = |action: String| StepOutcome::Failed { action, code: ErrorCode::SystemProxyRestoreFailed, detail: None };
+        let current = match edge_winsys::read_proxy() {
+            Ok(c) => c,
+            Err(e) => return failed(format!("Could not read the Windows proxy settings: {e}")),
+        };
+        match restore_target(&rec.prev, &rec.ours, &current) {
+            RestoreDecision::AlreadyRestored => {
+                StepOutcome::NotNeeded { action: "Windows proxy settings were already back to their previous values".into() }
+            }
+            RestoreDecision::ChangedByUser => StepOutcome::Restored {
+                action: "Left the Windows proxy settings unchanged because they were modified while connected".into(),
+            },
+            RestoreDecision::Restore(prev) => match edge_winsys::write_proxy(&prev).and_then(|_| edge_winsys::read_proxy()) {
+                Ok(after) if after.flags == prev.flags && after.server == prev.server => {
+                    StepOutcome::Restored { action: "Restored the previous Windows proxy settings".into() }
+                }
+                Ok(_) => failed("The Windows proxy settings did not return to their previous values".into()),
+                Err(e) => failed(format!("Could not restore the Windows proxy settings: {e}")),
+            },
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = rec;
+        StepOutcome::Skipped { action: "Windows proxy record on a non-Windows OS".into(), code: ErrorCode::UnsupportedPlatform }
+    }
+}
+
 /// In-memory stand-in for `networksetup` used by tests: keeps per-service
 /// settings and interprets the subset of commands we use.
 #[cfg(test)]

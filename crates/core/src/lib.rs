@@ -29,6 +29,7 @@ pub mod secret;
 pub mod singbox;
 pub mod sysproxy;
 pub mod validate;
+pub mod winproxy;
 
 pub use error_code::ErrorCode;
 
