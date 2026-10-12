@@ -14,8 +14,9 @@ Each agent edits only its own section.
   mode switches in system proxy mode on macOS**; live node switching; `test_node`
   (temporary core); `get_logs` (redacted); launch recovery from the journal; windows + tray;
   rules status.
-- **Untested against the real server / real Mac settings:** everything in the line above
-  that touches the network or OS (owner runs H-1 and M-SYSPROXY in TESTING.md).
+- **Verified:** harness H-1 PASS for HY2 and REALITY (exit GB); real `networksetup`
+  round trip PASS. **Not yet verified:** the in-app end-to-end flow M-SYSPROXY (connect,
+  disconnect, quit, force-quit recovery, `--restore-networking`).
 - **Stored but not applied yet:** launch at login, auto-connect, close-to-tray (B5); failover
   between nodes (B4; health checks run and drive connected ↔ degraded only).
 - **Stubbed (`NOT_IMPLEMENTED`):** `update_rules_now`, install/uninstall helper,
