@@ -91,6 +91,7 @@ error_codes! {
     ProbeTimeout => "The connectivity test timed out.",
     ProbeFailed => "The connectivity test failed.",
     AllNodesFailed => "All configured nodes are failing. Traffic is blocked to prevent leaks.",
+    DirectFallbackActive => "All nodes are failing. Direct fallback is on: traffic is going out directly and unprotected until a node recovers.",
     SystemProxySetFailed => "The system proxy could not be set.",
     SystemProxyRestoreFailed => "The previous system proxy settings could not be fully restored.",
     NetworkChanged => "The network changed. Reconnecting.",

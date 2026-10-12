@@ -79,6 +79,9 @@ pub struct GenInput<'a> {
     pub controller_port: u16,
     pub controller_secret: &'a str,
     pub rule_sets: RuleSets,
+    /// Direct fallback enabled: `direct` is a selectable member of the selector
+    /// (used only when every node fails).
+    pub direct_fallback: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,10 +132,14 @@ pub fn generate(input: &GenInput) -> Result<Value, GenError> {
     };
 
     // --- outbounds ---------------------------------------------------------
+    let mut members: Vec<String> = input.nodes.iter().map(|(id, _)| node_tag(id)).collect();
+    if input.direct_fallback {
+        members.push(TAG_DIRECT.into());
+    }
     let mut outbounds: Vec<Value> = vec![json!({
         "type": "selector",
         "tag": TAG_PROXY,
-        "outbounds": input.nodes.iter().map(|(id, _)| node_tag(id)).collect::<Vec<_>>(),
+        "outbounds": members,
         "default": node_tag(input.selected),
         "interrupt_exist_connections": true
     })];
@@ -345,6 +352,7 @@ mod tests {
             controller_port: 17891,
             controller_secret: "FAKE-controller-secret",
             rule_sets: RuleSets { geosite_cn: rs.join("geosite-cn.srs"), geoip_cn: rs.join("geoip-cn.srs") },
+            direct_fallback: false,
         }
     }
 
@@ -386,6 +394,11 @@ mod tests {
         assert_eq!(ob[3]["tls"]["utls"]["fingerprint"], "chrome");
         assert_eq!(ob[3]["tls"]["server_name"], "www.example.org");
         assert_eq!(ob[4]["type"], "direct");
+        let mut i = input(vec![("a", &a)], Routing::Rule, DnsProfile::Mainland, true, Path::new("/r"));
+        i.direct_fallback = true;
+        let cfg = generate(&i).unwrap();
+        assert_eq!(cfg["outbounds"][0]["outbounds"], json!(["node-a", "direct"]), "direct last, never default");
+        assert_eq!(cfg["outbounds"][0]["default"], "node-a");
     }
 
     #[test]
@@ -493,6 +506,7 @@ mod tests {
                     if tun {
                         i.capture = Capture::Tun;
                     }
+                    i.direct_fallback = lan; // exercise both selector shapes
                     let cfg = generate(&i).unwrap();
                     let path = dir.path().join("config.json");
                     std::fs::write(&path, serde_json::to_vec(&cfg).unwrap()).unwrap();

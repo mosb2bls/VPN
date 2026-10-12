@@ -1,6 +1,6 @@
 # EdgeClient — Backend ↔ UI Interface Specification
 
-**Spec version:** 1.3.6
+**Spec version:** 1.4.0
 **Status:** approved; includes REQ-1 to REQ-4 (Phase B1). "1.0.0" marks a breaking change, not feature completeness — most commands are still stubs.
 **Generated bindings:** `src/api/bindings.ts` (from `src-tauri/src/api/*`, via tauri-specta `=2.0.0-rc.25`)
 
@@ -12,6 +12,7 @@ the disagreement is a backend bug — file a REQ.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.4.0 | 2026-10-12 | **Additive:** `FailoverKind` value `switched_to_direct`; `FailoverStatus.direct`; error code `DIRECT_FALLBACK_ACTIVE`. **Behaviour:** direct fallback (`safety.directFallback`, default off) is implemented: when every node fails, traffic goes direct (unprotected) and returns to the proxy as soon as a node passes; with it off, all-failing is reported as `ALL_NODES_FAILED` and traffic stays blocked (§5). |
 | 1.3.6 | 2026-10-12 | **Behaviour:** `export_diagnostics` is real (zip in Downloads; contents and redaction in §2.6); `reveal_diagnostics` reveals it. No type changes. |
 | 1.3.5 | 2026-10-12 | **Behaviour (B2 rules):** `update_rules_now` and the scheduled update (setting `rulesAutoUpdate`, every `rulesUpdateIntervalHours`) are real: newest commits of SagerNet `rule-set` branches, validated (size, sanity matches, `sing-box check`), atomic swap, previous rules kept on failure. `RulesStatus` reports `source`, `updatedAt`, `lastCheckAt`, `nextCheckAt`, `updating`, `lastError`. No type changes. |
 | 1.3.4 | 2026-10-12 | **Behaviour (B5):** `set_settings` applies launch-at-login immediately (macOS LaunchAgent / Windows Run key via the Tauri autostart plugin; failure → `LAUNCH_AT_LOGIN_FAILED`, nothing saved); `get_settings.launchAtLogin` reports the real login-item state; auto-connect runs at launch after recovery, only from a clean `disconnected` state; with close-to-tray off, closing the settings window quits (with restore). No type changes. |
@@ -496,8 +497,20 @@ Transitions (trigger → next state):
   continuously for `returnStableSecs` (default 10 min) before switching back.
 - **Rescue:** if the node in use keeps failing while the other node passes its background
   probe, the switch happens even inside the dwell time (still rate-limited) — staying on a
-  dead node is worse than a flap. If both fail, nothing switches (`suppressed`, state
-  `degraded`).
+  dead node is worse than a flap.
+- **All nodes failing** (the node in use reached the threshold and the other node's
+  background probe fails too, or there is no other node):
+  - direct fallback **off** (default): traffic stays blocked (fail closed);
+    `failoverEvent` kind `suppressed` (once per streak), state `degraded`,
+    `lastError.code = ALL_NODES_FAILED`.
+  - direct fallback **on**: the selector switches to `direct` — traffic goes out
+    **directly, unprotected** (OS capture unchanged, no kill switch). `failoverEvent` kind
+    `switched_to_direct` (`toNodeId: null`), `activeNodeChanged` with `nodeId: null`, state
+    `degraded`, `lastError.code = DIRECT_FALLBACK_ACTIVE`, `Status.failover.direct = true`
+    (`fallbackNodeId: ""`). Every probe round then tests the primary (then the fallback);
+    as soon as one passes, traffic goes back through it (`returned_to_primary` /
+    `switched_to_fallback`, state `connected`). Changing the setting takes effect on the
+    next connect (the running config must contain `direct`).
 - Every decision emits `failoverEvent` with a display-ready `reason`, e.g.
   "HY2: 3 consecutive probe failures — UDP may be blocked on this network" /
   "HY2: healthy for 10 min — switching back". Suppressed decisions are reported once per
@@ -642,8 +655,10 @@ Things the UI must explain to the user (wording is the UI's choice; substance is
    **blocked** on purpose; China/LAN direct traffic may also be briefly blocked. When
    `status.killSwitchActive` is true, show it prominently and offer Disconnect and
    Restore networking.
-5. **Direct fallback** (`safety.directFallback`, off by default): when on, if all nodes
-   fail, traffic goes out **unprotected, directly**. Warn before enabling.
+5. **Direct fallback** (`safety.directFallback`, off by default; **implemented as of
+   1.4.0**): when on, if all nodes fail, traffic goes out **unprotected, directly** until a
+   node recovers. Warn before enabling; while it is active (`status.failover.direct`), show
+   a prominent "unprotected — direct" banner. The setting applies from the next connect.
 6. **Insecure TLS** (`hy2 insecure: true`): disables certificate verification; show a
    warning on the node.
 7. **Failover reasons** in `failoverEvent.reason` are display-ready; show them (toast /

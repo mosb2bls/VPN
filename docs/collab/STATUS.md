@@ -15,8 +15,9 @@ Each agent edits only its own section.
 - **Verified on real systems (macOS arm64, 2026-10-12):** harness H-1 (HY2 + REALITY, exit
   GB); networksetup round trip; owner-reported PASS for M-HELPER, M-TUN, M-IPV6, M-DNSLEAK,
   M-KILL, M-TUN-FORCEKILL, M-SYSPROXY, M-FAILOVER, M-LIFECYCLE.
-- **Failover (B4):** implemented (engine unit-tested; live switching via selector). Real
-  UDP-block test M-FAILOVER pending. Direct fallback when all nodes fail: not yet.
+- **Failover (B4):** implemented and M-FAILOVER passed. **Direct fallback when all nodes
+  fail: implemented in SPEC 1.4.0** (unit-tested; real test pending — see TESTING
+  M-DIRECTFALLBACK).
 - **Lifecycle (B5):** launch at login, auto-connect, close-to-tray implemented (M-LIFECYCLE
   pending).
 - **Rules:** bundled + automatic / manual updates (validated, atomic). TUN uses the

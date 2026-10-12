@@ -50,6 +50,9 @@ pub enum FailoverKind {
     ReturnedToPrimary,
     /// A switch was warranted but suppressed (dwell time / rate limit / no fallback).
     Suppressed,
+    /// Every node is failing and direct fallback is on: traffic goes direct
+    /// (unprotected) until a node recovers. `toNodeId` is null. (SPEC 1.4.0)
+    SwitchedToDirect,
 }
 
 /// Automatic failover decision, always with a human-readable reason, e.g.

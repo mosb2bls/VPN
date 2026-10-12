@@ -73,6 +73,7 @@ pub fn probe_node(
         controller_port: ctl,
         controller_secret: &secret,
         rule_sets: rules,
+        direct_fallback: false,
     })
     .map_err(|e| AppError::new(ErrorCode::Internal).with_detail(format!("{e:?}")))?;
     let mut core = CoreProcess::spawn(bin, &cfg, workdir)?;

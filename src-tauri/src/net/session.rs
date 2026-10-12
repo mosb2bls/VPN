@@ -263,6 +263,7 @@ pub fn load_last_restore(dir: &Path) -> Option<RestoreReport> {
 struct Plan {
     tun: bool,
     kill_switch: bool,
+    direct_fallback: bool,
     configs: Vec<(String, NodeConfig)>,
     selected: String,
     routing: singbox::Routing,
@@ -305,6 +306,7 @@ fn plan(app: &AppHandle) -> ApiResult<Plan> {
         Ok(Plan {
             tun,
             kill_switch: p.safety.kill_switch,
+            direct_fallback: p.safety.direct_fallback,
             configs,
             selected,
             routing,
@@ -331,6 +333,7 @@ fn gen_config(p: &Plan, mixed: u16, ctl: u16, secret: &str) -> ApiResult<serde_j
         controller_port: ctl,
         controller_secret: secret,
         rule_sets: p.rules.clone(),
+        direct_fallback: p.direct_fallback,
     })
     .map_err(|e| AppError::new(ErrorCode::CoreConfigInvalid).with_detail(format!("{e:?}")))
 }
@@ -441,6 +444,7 @@ fn tun_profile(p: &Plan) -> TunProfile {
         },
         allow_lan: p.allow_lan,
         kill_switch: p.kill_switch,
+        direct_fallback: p.direct_fallback,
     }
 }
 
@@ -921,6 +925,8 @@ fn health_round(
                 min_dwell_secs: f.min_dwell_secs as u64,
                 return_stable_secs: f.return_stable_secs as u64,
                 max_switches_per_hour: f.max_switches_per_hour.max(1),
+                // Only effective if the running config has `direct` in the selector.
+                direct_fallback: st.prefs.prefs.safety.direct_fallback && p.direct_fallback,
             },
             if f.probe_targets.len() >= 2 { f.probe_targets.clone() } else { p.targets.clone() },
             f.probe_timeout_secs.max(1) * 1000,
@@ -940,6 +946,49 @@ fn health_round(
         *engine = Some(failover::Engine::new(failover::Node { id: selected.clone(), kind }, fallback));
     }
     let e = engine.as_mut().expect("set above");
+    if e.on_direct() {
+        // Traffic goes direct: probe the nodes, leave direct as soon as one passes.
+        let primary = e.primary_id().to_string();
+        let (p_ok, _) = health(api, &primary, &targets, timeout_ms);
+        let f_ok = if p_ok { None } else { e.other_id().map(|f| health(api, f, &targets, timeout_ms).0) };
+        if let failover::Decision::LeaveDirect { to, reason } = e.on_direct_round(p_ok, f_ok)
+            && api.select(singbox::TAG_PROXY, &singbox::node_tag(&to)).is_ok()
+        {
+            {
+                let back_to_primary = to == primary;
+                let _ = FailoverEvent {
+                    kind: if back_to_primary { FailoverKind::ReturnedToPrimary } else { FailoverKind::SwitchedToFallback },
+                    from_node_id: singbox::TAG_DIRECT.into(),
+                    to_node_id: Some(to.clone()),
+                    reason: reason.clone(),
+                    at: edge_core::clock::now_rfc3339(),
+                }
+                .emit(app);
+                let _ = ActiveNodeChanged {
+                    previous_node_id: None,
+                    node_id: Some(to.clone()),
+                    cause: if back_to_primary { NodeChangeCause::Failback } else { NodeChangeCause::Failover },
+                }
+                .emit(app);
+                logbuf::app(LogLevel::Warn, format!("failover: {reason}"));
+                let now_s = edge_core::clock::now_rfc3339();
+                update_status(app, Some(&reason), |s| {
+                    s.state = ConnectionState::Connected;
+                    s.active_node_id = Some(to.clone());
+                    s.last_error = None;
+                    s.failover = (!back_to_primary).then(|| FailoverStatus {
+                        primary_node_id: primary.clone(),
+                        fallback_node_id: to.clone(),
+                        since: now_s.clone(),
+                        reason: reason.clone(),
+                        earliest_return_at: None,
+                        direct: false,
+                    });
+                });
+            }
+        }
+        return;
+    }
     let active = e.active_id().to_string();
     let (ok, probes) = health(api, &active, &targets, timeout_ms);
     *latency.lock().unwrap_or_else(|x| x.into_inner()) = if ok { median(&probes) } else { None };
@@ -1007,9 +1056,53 @@ fn health_round(
                     since: now_s.clone(),
                     reason: reason.clone(),
                     earliest_return_at: earliest.clone(),
+                    direct: false,
                 });
             });
         }
+        failover::Decision::AllFailed { direct, reason } => {
+            if direct && api.select(singbox::TAG_PROXY, singbox::TAG_DIRECT).is_ok() {
+                let now_s = edge_core::clock::now_rfc3339();
+                let _ = FailoverEvent {
+                    kind: FailoverKind::SwitchedToDirect,
+                    from_node_id: active.clone(),
+                    to_node_id: None,
+                    reason: reason.clone(),
+                    at: now_s.clone(),
+                }
+                .emit(app);
+                let _ = ActiveNodeChanged { previous_node_id: Some(active.clone()), node_id: None, cause: NodeChangeCause::Failover }.emit(app);
+                logbuf::app(LogLevel::Warn, format!("failover: {reason}"));
+                update_status(app, Some(&reason), |s| {
+                    s.state = ConnectionState::Degraded;
+                    s.active_node_id = None;
+                    s.last_error = Some(AppError::new(ErrorCode::DirectFallbackActive));
+                    s.failover = Some(FailoverStatus {
+                        primary_node_id: primary.clone(),
+                        fallback_node_id: String::new(),
+                        since: now_s.clone(),
+                        reason: reason.clone(),
+                        earliest_return_at: None,
+                        direct: true,
+                    });
+                });
+            } else {
+                let _ = FailoverEvent {
+                    kind: FailoverKind::Suppressed,
+                    from_node_id: active.clone(),
+                    to_node_id: None,
+                    reason: reason.clone(),
+                    at: edge_core::clock::now_rfc3339(),
+                }
+                .emit(app);
+                logbuf::app(LogLevel::Warn, format!("failover: {reason}"));
+                update_status(app, Some(&reason), |s| {
+                    s.state = ConnectionState::Degraded;
+                    s.last_error = Some(AppError::new(ErrorCode::AllNodesFailed));
+                });
+            }
+        }
+        failover::Decision::LeaveDirect { .. } => {}
         failover::Decision::Suppressed { reason } => {
             let _ = FailoverEvent {
                 kind: FailoverKind::Suppressed,
@@ -1112,6 +1205,7 @@ fn clone_plan(p: &Plan) -> Plan {
     Plan {
         tun: p.tun,
         kill_switch: p.kill_switch,
+        direct_fallback: p.direct_fallback,
         configs: p.configs.clone(),
         selected: p.selected.clone(),
         routing: p.routing,

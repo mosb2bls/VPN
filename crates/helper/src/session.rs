@@ -461,6 +461,7 @@ fn spawn_core(p: &TunProfile, configs: &[(String, NodeConfig)], rules: &RuleSets
         controller_port: port,
         controller_secret: &secret,
         rule_sets: rules.clone(),
+        direct_fallback: p.direct_fallback,
     })
     .map_err(|e| (ErrorCode::CoreConfigInvalid, Some(format!("{e:?}"))))?;
     let work = data_dir().join("run");
@@ -541,7 +542,7 @@ mod tests {
     use edge_core::link::parse_link;
 
     fn profile(nodes: Vec<WireNode>, selected: &str) -> TunProfile {
-        TunProfile { nodes, selected: selected.into(), routing: WireRouting::Rule, dns: WireDns::Mainland, allow_lan: true, kill_switch: true }
+        TunProfile { nodes, selected: selected.into(), routing: WireRouting::Rule, dns: WireDns::Mainland, allow_lan: true, kill_switch: true, direct_fallback: false }
     }
 
     #[test]

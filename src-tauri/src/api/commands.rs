@@ -709,6 +709,7 @@ passwords, share links) and the proxy servers' hostnames / IPs are replaced with
             controller_port: 0,
             controller_secret: "[redacted]",
             rule_sets: edge_core::singbox::RuleSets { geosite_cn: rules.geosite_cn, geoip_cn: rules.geoip_cn },
+            direct_fallback: false,
         });
         if let Ok(cfg) = cfg {
             entries.push(Entry { name: "sample-config.json".into(), text: pretty(&cfg) });

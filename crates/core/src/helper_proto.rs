@@ -164,6 +164,8 @@ pub struct TunProfile {
     pub dns: WireDns,
     pub allow_lan: bool,
     pub kill_switch: bool,
+    #[serde(default)]
+    pub direct_fallback: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -239,6 +241,7 @@ mod tests {
                 dns: WireDns::Mainland,
                 allow_lan: true,
                 kill_switch: true,
+                direct_fallback: false,
             }),
         })
         .unwrap();

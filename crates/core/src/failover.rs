@@ -13,6 +13,9 @@
 //! - Exception ("rescue"): if the node in use is failing and the other node is
 //!   passing, switch even inside the dwell time (still rate-limited) — staying
 //!   on a dead node is worse than a flap.
+//! - All nodes failing: traffic stays blocked (fail closed) unless the user
+//!   enabled **direct fallback** — then go direct (unprotected) and leave
+//!   direct as soon as any node passes again.
 
 use std::collections::VecDeque;
 
@@ -44,6 +47,8 @@ pub struct Settings {
     pub min_dwell_secs: u64,
     pub return_stable_secs: u64,
     pub max_switches_per_hour: u32,
+    /// User setting (default off): send traffic direct when every node fails.
+    pub direct_fallback: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,6 +58,11 @@ pub enum Decision {
     ReturnToPrimary { to: String, reason: String },
     /// A switch was warranted but not allowed (reported once per failure streak).
     Suppressed { reason: String },
+    /// Every node is failing. `direct` = traffic now goes direct (direct
+    /// fallback enabled); otherwise it stays blocked. Reported once per streak.
+    AllFailed { direct: bool, reason: String },
+    /// Leaving direct mode: a node passes again.
+    LeaveDirect { to: String, reason: String },
 }
 
 #[derive(Debug, Clone)]
@@ -75,6 +85,7 @@ pub struct Engine {
     last_switch: Option<u64>,
     switches: VecDeque<u64>,
     suppressed_reported: bool,
+    on_direct: bool,
 }
 
 impl Engine {
@@ -89,7 +100,49 @@ impl Engine {
             last_switch: None,
             switches: VecDeque::new(),
             suppressed_reported: false,
+            on_direct: false,
         }
+    }
+
+    /// Traffic currently goes direct (direct fallback engaged).
+    pub fn on_direct(&self) -> bool {
+        self.on_direct
+    }
+
+    /// While direct: one round of probes of the primary and the fallback.
+    pub fn on_direct_round(&mut self, primary_ok: bool, fallback_ok: Option<bool>) -> Decision {
+        if !self.on_direct {
+            return Decision::None;
+        }
+        let (to, kind) = if primary_ok {
+            self.on_fallback = false;
+            (self.primary.id.clone(), self.primary.kind)
+        } else if fallback_ok == Some(true) && let Some(f) = self.fallback.clone() {
+            self.on_fallback = true;
+            (f.id, f.kind)
+        } else {
+            return Decision::None;
+        };
+        self.on_direct = false;
+        self.failed = 0;
+        self.suppressed_reported = false;
+        Decision::LeaveDirect { to, reason: format!("{} is reachable again — traffic goes through the proxy again", kind.label()) }
+    }
+
+    fn all_failed(&mut self, s: &Settings, why: String) -> Decision {
+        if s.direct_fallback {
+            self.on_direct = true;
+            self.suppressed_reported = true;
+            return Decision::AllFailed {
+                direct: true,
+                reason: format!("{why}; all nodes are failing — direct fallback is on, traffic now goes out directly and unprotected"),
+            };
+        }
+        if self.suppressed_reported {
+            return Decision::None;
+        }
+        self.suppressed_reported = true;
+        Decision::AllFailed { direct: false, reason: format!("{why}; all nodes are failing — traffic is blocked to prevent leaks") }
     }
 
     pub fn active_id(&self) -> &str {
@@ -206,19 +259,16 @@ impl Engine {
         let hint = active_kind.map(|k| k.hint()).unwrap_or("");
         let why = format!("{label}: {} consecutive probe failures — {hint}", self.failed);
         let Some(fallback) = self.fallback.clone() else {
-            return self.suppressed(format!("{why}; no fallback node configured"));
+            return self.all_failed(s, format!("{why}; no fallback node configured"));
         };
         let rescue = self.other_ok == Some(true);
-        if !self.dwell_ok(now, s) && !rescue {
-            return self.suppressed(format!("{why}; switched recently, waiting before switching again"));
-        }
-        if !self.rate_ok(now, s) {
-            return self.suppressed(format!("{why}; switch limit per hour reached"));
-        }
         if self.on_fallback {
             // Fallback failing: go back to the primary only if it is passing.
             if !rescue {
-                return self.suppressed(format!("{why}; the primary node is failing too"));
+                return self.all_failed(s, format!("{why}; the primary node is failing too"));
+            }
+            if !self.rate_ok(now, s) {
+                return self.suppressed(format!("{why}; switch limit per hour reached"));
             }
             self.on_fallback = false;
             self.record_switch(now);
@@ -228,7 +278,13 @@ impl Engine {
             };
         }
         if self.other_ok == Some(false) {
-            return self.suppressed(format!("{why}; the fallback node is failing too"));
+            return self.all_failed(s, format!("{why}; the fallback node is failing too"));
+        }
+        if !self.dwell_ok(now, s) && !rescue {
+            return self.suppressed(format!("{why}; switched recently, waiting before switching again"));
+        }
+        if !self.rate_ok(now, s) {
+            return self.suppressed(format!("{why}; switch limit per hour reached"));
         }
         self.on_fallback = true;
         self.record_switch(now);
@@ -246,7 +302,7 @@ mod tests {
     use super::*;
 
     fn s() -> Settings {
-        Settings { enabled: true, failure_rounds: 3, min_dwell_secs: 300, return_stable_secs: 600, max_switches_per_hour: 4 }
+        Settings { enabled: true, failure_rounds: 3, min_dwell_secs: 300, return_stable_secs: 600, max_switches_per_hour: 4, direct_fallback: false }
     }
     fn engine() -> Engine {
         Engine::new(
@@ -318,26 +374,56 @@ mod tests {
     }
 
     #[test]
-    fn dwell_blocks_flapping_and_is_reported_once() {
+    fn all_failing_blocks_and_is_reported_once() {
         let mut e = engine();
         for t in [0, 10, 20] {
             e.on_active_round(t, false, &s());
         }
         // Fallback fails right after the switch while the primary is also failing.
         e.on_other_round(25, false, &s());
-        let mut suppressed = 0;
+        let mut reported = 0;
         for t in [30, 40, 50, 60, 70] {
             match e.on_active_round(t, false, &s()) {
-                Decision::Suppressed { reason } => {
-                    suppressed += 1;
+                Decision::AllFailed { direct: false, reason } => {
+                    reported += 1;
                     assert!(reason.contains("REALITY: 3 consecutive probe failures"), "{reason}");
+                    assert!(reason.contains("blocked"), "{reason}");
                 }
                 Decision::None => {}
                 d => panic!("unexpected {d:?}"),
             }
         }
-        assert_eq!(suppressed, 1, "suppression reported once per streak");
-        assert!(e.on_fallback());
+        assert_eq!(reported, 1, "reported once per streak");
+        assert!(e.on_fallback() && !e.on_direct());
+    }
+
+    #[test]
+    fn direct_fallback_engages_and_leaves_when_a_node_recovers() {
+        let mut st = s();
+        st.direct_fallback = true;
+        let mut e = engine();
+        e.on_active_round(0, false, &st);
+        e.on_other_round(1, false, &st); // fallback failing too
+        e.on_active_round(10, false, &st);
+        match e.on_active_round(20, false, &st) {
+            Decision::AllFailed { direct: true, reason } => assert!(reason.contains("unprotected"), "{reason}"),
+            d => panic!("{d:?}"),
+        }
+        assert!(e.on_direct());
+        assert_eq!(e.on_direct_round(false, Some(false)), Decision::None);
+        match e.on_direct_round(false, Some(true)) {
+            Decision::LeaveDirect { to, .. } => assert_eq!(to, "reality"),
+            d => panic!("{d:?}"),
+        }
+        assert!(!e.on_direct() && e.on_fallback());
+        // Without a fallback node: direct immediately after the threshold.
+        let mut e = Engine::new(Node { id: "hy2".into(), kind: NodeKind::Hysteria2 }, None);
+        let mut last = Decision::None;
+        for t in [0, 10, 20] {
+            last = e.on_active_round(t, false, &st);
+        }
+        assert!(matches!(last, Decision::AllFailed { direct: true, .. }), "{last:?}");
+        assert!(matches!(e.on_direct_round(true, None), Decision::LeaveDirect { ref to, .. } if to == "hy2"));
     }
 
     #[test]
@@ -383,7 +469,7 @@ mod tests {
         for t in [0, 10, 20] {
             got = e.on_active_round(t, false, &s());
         }
-        assert!(matches!(got, Decision::Suppressed { ref reason } if reason.contains("no fallback")), "{got:?}");
+        assert!(matches!(got, Decision::AllFailed { direct: false, ref reason } if reason.contains("no fallback")), "{got:?}");
     }
 
     #[test]

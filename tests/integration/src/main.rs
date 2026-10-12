@@ -193,6 +193,7 @@ fn test_node(bin: &Path, cfg: &NodeConfig, rules: RuleSets, dns: DnsProfile) -> 
         controller_port: ctl,
         controller_secret: &secret,
         rule_sets: rules,
+        direct_fallback: false,
     }) {
         Ok(c) => c,
         Err(e) => return fail("CORE_CONFIG_INVALID", format!("{e:?}")),

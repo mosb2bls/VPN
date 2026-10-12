@@ -250,6 +250,9 @@ pub struct FailoverStatus {
     pub reason: String,
     /// Earliest time automatic return to the primary is possible.
     pub earliest_return_at: Option<String>,
+    /// True while every node is failing and direct fallback sends traffic
+    /// out directly, unprotected (`activeNodeId` is null then). (SPEC 1.4.0)
+    pub direct: bool,
 }
 
 #[derive(Serialize, Deserialize, Type, Debug, Clone)]

@@ -183,6 +183,7 @@ fn validate(bin: &Path, staging: &Path) -> Result<(), AppError> {
         controller_port: 2,
         controller_secret: "check",
         rule_sets: RuleSets { geosite_cn: staging.join("geosite-cn.srs"), geoip_cn: staging.join("geoip-cn.srs") },
+        direct_fallback: false,
     })
     .map_err(|e| invalid(format!("{e:?}")))?;
     let path = staging.join("check.json");
