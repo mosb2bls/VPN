@@ -1,0 +1,10 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "externalBin": ["binaries/sing-box", "binaries/edge-helper"],
+    "resources": {
+      "../resources/rules/geosite-cn.srs": "resources/rules/geosite-cn.srs",
+      "../resources/rules/geoip-cn.srs": "resources/rules/geoip-cn.srs"
+    }
+  }
+}

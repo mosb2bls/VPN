@@ -21,6 +21,9 @@ Each agent edits only its own section.
 - **Rules:** bundled + automatic / manual updates (validated, atomic). TUN uses the
   helper's installed copy.
 - **Diagnostics:** `export_diagnostics` real (redacted zip in Downloads).
+- **Packaging (B6):** `npm run bundle:mac` / `bundle:win` (sing-box + helper as sidecars,
+  rule-sets as resources) — macOS bundle verified locally; CI workflow committed, not yet
+  pushed (owner decision on Actions minutes). README with Gatekeeper / SmartScreen steps.
 - **Not yet on Windows:** system proxy, helper / TUN / WFP kill switch (B3.2).
 - **Known issues:** `npm run tauri dev` fails if another Vite server holds port 1420; use
   `cargo run -p edge-app`. The helper binary must be built (`cargo build -p edge-helper`)

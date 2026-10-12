@@ -1,0 +1,88 @@
+# CI: unit tests + lint on macOS (arm64) and Windows (x64); unsigned bundles
+# (.dmg / NSIS .exe) as artifacts on pushes to main and on tags.
+# No real credentials: the real-server harness is local-only and never runs here.
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci
+      - name: Fetch and verify sing-box + rule-sets
+        run: npm run fetch-core
+      - name: Rust tests
+        run: cargo test --workspace
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: Frontend lint
+        run: npm run lint
+      - name: TypeScript check
+        run: npx tsc --noEmit -p .
+
+  bundle-macos:
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci
+      - name: Build unsigned .dmg
+        run: npm run bundle:mac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EdgeClient-macos-arm64
+          path: target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+
+  bundle-windows:
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: npm ci
+      - name: Build unsigned NSIS installer
+        run: npm run bundle:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EdgeClient-windows-x64
+          path: target/release/bundle/nsis/*.exe
+          if-no-files-found: error

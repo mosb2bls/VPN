@@ -77,7 +77,12 @@ async function install(triple) {
     mkdirSync(extractDir);
     // bsdtar (macOS, Windows 10+) extracts both .tar.gz and .zip. Arguments are
     // passed as an array — no shell.
-    execFileSync("tar", ["-xf", archivePath, "-C", extractDir], { stdio: "inherit" });
+    // On Windows use the system bsdtar explicitly: Git's GNU tar (often first on
+    // PATH on CI runners) cannot extract .zip archives.
+    const tar = process.platform === "win32"
+      ? join(process.env.SystemRoot || "C:\\Windows", "System32", "tar.exe")
+      : "tar";
+    execFileSync(tar, ["-xf", archivePath, "-C", extractDir], { stdio: "inherit" });
     const bin = findFile(extractDir, t.binary);
     if (!bin) throw new Error(`${t.binary} not found in ${t.asset}`);
     mkdirSync(outDir, { recursive: true });

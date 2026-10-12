@@ -136,10 +136,10 @@ fn run_as_admin(argv: &[String], fail: ErrorCode) -> ApiResult<()> {
 }
 
 #[cfg(target_os = "macos")]
-pub fn install() -> ApiResult<HelperStatus> {
+pub fn install(resource_dir: Option<PathBuf>) -> ApiResult<HelperStatus> {
     let helper = bundled_helper()?;
     let singbox = crate::core_bin::locate_verified()?;
-    let rules = crate::rules::bundled_dir(None);
+    let rules = crate::rules::bundled_dir(resource_dir);
     let uid = unsafe { libc::getuid() };
     run_as_admin(
         &[
@@ -173,7 +173,7 @@ pub fn uninstall() -> ApiResult<HelperStatus> {
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn install() -> ApiResult<HelperStatus> {
+pub fn install(_resource_dir: Option<PathBuf>) -> ApiResult<HelperStatus> {
     Err(AppError::new(ErrorCode::UnsupportedPlatform).with_detail("Windows service: Windows phase"))
 }
 

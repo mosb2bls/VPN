@@ -531,7 +531,8 @@ fn emit_helper(app: &AppHandle, status: &HelperStatus) {
 #[tauri::command]
 #[specta::specta]
 pub async fn install_helper(app: AppHandle) -> ApiResult<HelperStatus> {
-    let st = tauri::async_runtime::spawn_blocking(crate::net::helper_client::install)
+    let resources = app.path().resource_dir().ok();
+    let st = tauri::async_runtime::spawn_blocking(move || crate::net::helper_client::install(resources))
         .await
         .map_err(|_| AppError::new(ErrorCode::Internal))??;
     emit_helper(&app, &st);
