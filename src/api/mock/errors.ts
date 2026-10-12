@@ -88,6 +88,7 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   RULES_DOWNLOAD_FAILED: "Rule update failed to download. The current rules are still in use.",
   RULES_VALIDATION_FAILED: "Downloaded rules were invalid. The current rules are still in use.",
   RULES_UPDATE_IN_PROGRESS: "A rule update is already running.",
+  RULES_MISSING: "Routing rules are missing or damaged. Reinstall the app.",
 
   SETTINGS_INVALID: "One or more settings are invalid.",
   SETTINGS_SAVE_FAILED: "Settings could not be saved.",

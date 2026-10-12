@@ -178,15 +178,15 @@ export function defaultRules(): RulesStatus {
   const day = 86_400_000;
   const iso = (t: number) => new Date(t).toISOString().replace(/\.\d+Z$/, "Z");
   return {
-    version: "2026.10.01",
+    version: "2026.10.10", // as the real bundle (SPEC 1.3.0)
     source: "bundled",
-    updatedAt: "2026-10-01T00:00:00Z",
+    updatedAt: "2026-10-10T06:12:00Z",
     lastCheckAt: iso(Date.now() - 3 * 3_600_000),
     nextCheckAt: iso(Date.now() + day - 3 * 3_600_000),
     updating: false,
     sets: [
-      { name: "geoip-cn", sizeBytes: 412_388, sha256Prefix: "3f9a12c4" },
-      { name: "geosite-cn", sizeBytes: 1_284_902, sha256Prefix: "b07e55d1" },
+      { name: "geosite-cn", sizeBytes: 1_284_902, sha256Prefix: "b07e55d1a2c4" },
+      { name: "geoip-cn", sizeBytes: 412_388, sha256Prefix: "3f9a12c48e07" },
     ],
     lastError: null,
   };
