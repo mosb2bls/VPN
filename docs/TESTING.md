@@ -106,6 +106,32 @@ function Cn { curl.exe -s -o NUL -m 10 -w "%{http_code}" https://www.baidu.com }
 browsers do. `LocDirect` uses no proxy. Only the `loc=` line is printed (the trace's `ip=`
 line is dropped).
 
+### 3.R Recovery — if the network breaks during a test (elevated)
+
+Gentle to heavy; stop once websites load again. Note in the report which step fixed it.
+
+0. Optional, for diagnosis: `Snapshot broken before`. The `DIFFERENT` sections show what
+   was left changed.
+1. Quit Lynnk (tray), then let it undo its own changes:
+   `(Start-Process $App.FullName -ArgumentList '--restore-networking' -Wait -PassThru).ExitCode`.
+   0 = restored, 2 = incomplete; continue either way.
+2. End the TUN session and the kill switch:
+   `Stop-Service $Svc -ErrorAction SilentlyContinue; Get-Process sing-box, edge-helper -ErrorAction SilentlyContinue | Stop-Process -Force`.
+   The WFP filters are in a dynamic session and vanish with the helper process.
+3. Undo test commands:
+   `Get-NetFirewallRule -DisplayName 'EdgeTest*' -ErrorAction SilentlyContinue | Remove-NetFirewallRule`;
+   `pktmon stop; pktmon filter remove`; re-enable a disabled adapter
+   (`Get-NetAdapter`, then `Enable-NetAdapter -Name '<name>' -Confirm:$false`);
+   `ipconfig /flushdns`.
+4. Settings → Network & internet → Proxy: turn off "Use a proxy server" if it shows
+   `127.0.0.1`, and turn off a setup script you did not set yourself. Restart the browser.
+5. Check: `Test-NetConnection 1.1.1.1 -Port 443` and `Resolve-DnsName example.com -DnsOnly`.
+6. Reboot. This clears the WFP filters and the Wintun adapter; the helper cleans up its
+   journal at start. To keep the helper from starting at boot until fixed:
+   `Set-Service $Svc -StartupType Disabled` (undo with `Automatic`, or uninstall the helper).
+7. Last resort, after a reboot didn't help: `netsh winsock reset; netsh int ip reset`, then
+   reboot. This also clears manually set IP / DNS settings.
+
 ### 3.1 Status
 
 | ID | What | Elevated | Status |
