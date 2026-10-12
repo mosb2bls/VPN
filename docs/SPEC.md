@@ -1,6 +1,6 @@
 # EdgeClient — Backend ↔ UI Interface Specification
 
-**Spec version:** 1.3.2
+**Spec version:** 1.3.3
 **Status:** approved; includes REQ-1 to REQ-4 (Phase B1). "1.0.0" marks a breaking change, not feature completeness — most commands are still stubs.
 **Generated bindings:** `src/api/bindings.ts` (from `src-tauri/src/api/*`, via tauri-specta `=2.0.0-rc.25`)
 
@@ -12,6 +12,7 @@ the disagreement is a backend bug — file a REQ.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.3.3 | 2026-10-12 | **Behaviour (B4):** automatic failover is implemented as described in §5 (decision engine `edge_core::failover`, unit-tested with simulated sequences); `failoverEvent` (all three kinds), `activeNodeChanged` (`failover` / `failback`), `Status.failover` with `earliestReturnAt`. Real UDP-block test pending (TESTING M-FAILOVER). No type changes. |
 | 1.3.2 | 2026-10-12 | **Behaviour (B3.1, macOS):** `get_helper_status` / `install_helper` / `uninstall_helper` are real (admin prompt); `connect` in **TUN mode** runs through the helper (TUN + IPv6 capture/reject, pf kill switch on core crash, re-attach after app crash). Untested on a real Mac until the owner installs the helper. ADR-0005, ADR-0006. No type changes. |
 | 1.3.1 | 2026-10-12 | **Behaviour (B2.7, macOS):** `connect` / `disconnect` / `restore_networking` / `quit_app` / mode setters work in **system proxy mode** (journal, exact restore, per-item reports, launch recovery, `--restore-networking`); `test_node` and `get_logs` are real; `delete_node` of the active node → `BUSY`. TUN still → `HELPER_NOT_INSTALLED`; Windows system proxy not yet (→ `SYSTEM_PROXY_SET_FAILED`). See ADR-0004. No type changes. |
 | 1.3.0 | 2026-10-12 | **Additive (B2.6):** error code `RULES_MISSING`. **Behaviour:** `get_rules_status` is real (bundled, pinned `geosite-cn` / `geoip-cn` rule-sets; `version` = manifest version, `updatedAt` = newest source commit time). Rule *updates* are still `NOT_IMPLEMENTED`. |
@@ -457,7 +458,7 @@ Transitions (trigger → next state):
 | `recovering` | journal restored | `disconnected` (report `restored`) |
 | `recovering` | restore incomplete | `error` (report `restore_incomplete`) |
 
-## 5. Failover behaviour (summary; implemented in Phase B4)
+## 5. Failover behaviour (implemented in B4; real-network test pending)
 
 - Applies only while connected with failover enabled. **Primary** = the selected node;
   **fallback** = `fallbackNodeId`, or (if null) the first node of the other protocol in
@@ -471,6 +472,17 @@ Transitions (trigger → next state):
   (then `suppressed`).
 - While on the fallback, the primary is probed in the background; it must pass
   continuously for `returnStableSecs` (default 10 min) before switching back.
+- **Rescue:** if the node in use keeps failing while the other node passes its background
+  probe, the switch happens even inside the dwell time (still rate-limited) — staying on a
+  dead node is worse than a flap. If both fail, nothing switches (`suppressed`, state
+  `degraded`).
+- Every decision emits `failoverEvent` with a display-ready `reason`, e.g.
+  "HY2: 3 consecutive probe failures — UDP may be blocked on this network" /
+  "HY2: healthy for 10 min — switching back". Suppressed decisions are reported once per
+  failure streak. While on the fallback, `Status.failover` holds primary, fallback, since,
+  reason and `earliestReturnAt`; `selectedNodeId` stays the user's choice and
+  `activeNodeId` is the fallback.
+- Settings changes apply from the next probe round.
 - Manual `select_node` always wins and resets failover state.
 
 ## 6. Routing, DNS and IPv6 (planned behaviour — verified in B2/B3; **untested**)

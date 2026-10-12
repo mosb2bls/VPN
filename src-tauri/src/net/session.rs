@@ -22,7 +22,7 @@ use tauri_specta::Event;
 use crate::api::commands::AppState;
 use crate::api::error::{ApiResult, AppError, ErrorCode};
 use crate::api::events::{
-    ActiveNodeChanged, HealthCheck, NodeChangeCause, ProbeResult, RecoveryCompleted, RestoreReportChanged,
+    ActiveNodeChanged, FailoverEvent, FailoverKind, HealthCheck, NodeChangeCause, ProbeResult, RecoveryCompleted, RestoreReportChanged,
     StatusChanged, TrafficStatsUpdated,
 };
 use crate::api::types::*;
@@ -32,6 +32,7 @@ use crate::net::journal::{self, CoreRecord, Journal, SystemProxyRecord};
 use crate::net::logbuf;
 use crate::net::osproxy::{self, Runner};
 use crate::net::probe;
+use edge_core::failover;
 use edge_core::helper_proto::{HelperState, TunProfile, WireDns, WireNode, WireRestoreItem, WireRouting};
 
 /// Serialises connect / disconnect / restore / mode switches.
@@ -771,7 +772,8 @@ fn spawn_monitor(app: AppHandle, generation: u64, p: Plan) {
         let mut last: Option<(Instant, f64, f64)> = None;
         let mut base: Option<(f64, f64)> = None;
         let mut next_health = Instant::now() + Duration::from_secs(10);
-        let mut failed_rounds = 0u32;
+        let started = Instant::now();
+        let mut engine: Option<failover::Engine> = None;
         loop {
             std::thread::sleep(Duration::from_secs(1));
             let Some((core, api, latency, active)) = with(&app, |st| {
@@ -871,36 +873,183 @@ fn spawn_monitor(app: AppHandle, generation: u64, p: Plan) {
             if Instant::now() >= next_health {
                 let interval = with(&app, |st| st.prefs.prefs.failover.probe_interval_secs.max(5));
                 next_health = Instant::now() + Duration::from_secs(interval as u64);
-                if let Some(node) = active {
-                    let (ok, probes) = health(&api, &node, &p.targets, p.timeout_ms);
-                    failed_rounds = if ok { 0 } else { failed_rounds + 1 };
-                    *latency.lock().unwrap_or_else(|e| e.into_inner()) = if ok { median(&probes) } else { None };
-                    let _ = HealthCheck {
-                        node_id: node,
-                        round_ok: ok,
-                        probes,
-                        consecutive_failed_rounds: failed_rounds,
-                        at: edge_core::clock::now_rfc3339(),
-                    }
-                    .emit(&app);
-                    // Automatic failover between nodes arrives in B4; here only
-                    // connected ↔ degraded.
-                    let state = with(&app, |st| st.status.state);
-                    if ok && state == ConnectionState::Degraded {
-                        update_status(&app, Some("Health checks passing again"), |s| {
-                            s.state = ConnectionState::Connected;
-                            s.last_error = None;
-                        });
-                    } else if !ok && state == ConnectionState::Connected {
-                        update_status(&app, Some("Health checks failing"), |s| {
-                            s.state = ConnectionState::Degraded;
-                            s.last_error = Some(AppError::new(ErrorCode::ProbeFailed));
-                        });
-                    }
+                if active.is_some() {
+                    health_round(&app, &api, &p, &latency, &mut engine, started.elapsed().as_secs());
                 }
             }
         }
     });
+}
+
+/// Fallback for `primary`: the configured node, else the first node of the
+/// other protocol in list order. Must be part of the running config.
+fn pick_fallback(st: &crate::state::AppData, primary: &str, in_config: &[String]) -> Option<failover::Node> {
+    let nodes = st.nodes.list();
+    let kind = |p: Protocol| match p {
+        Protocol::Hysteria2 => failover::NodeKind::Hysteria2,
+        Protocol::VlessReality => failover::NodeKind::VlessReality,
+    };
+    let primary_proto = nodes.iter().find(|n| n.id == primary)?.protocol;
+    let usable = |n: &&Node| n.id != primary && !n.secret_missing && in_config.contains(&n.id);
+    let chosen = match &st.prefs.prefs.failover.fallback_node_id {
+        Some(id) => nodes.iter().filter(usable).find(|n| &n.id == id),
+        None => nodes.iter().filter(usable).find(|n| n.protocol != primary_proto),
+    }?;
+    Some(failover::Node { id: chosen.id.clone(), kind: kind(chosen.protocol) })
+}
+
+/// One probe round: node in use (+ the other node when it matters), failover
+/// decision, events, status.
+fn health_round(
+    app: &AppHandle,
+    api: &ClashApi,
+    p: &Plan,
+    latency: &Arc<Mutex<Option<u32>>>,
+    engine: &mut Option<failover::Engine>,
+    now: u64,
+) {
+    let (selected, fallback, settings, targets, timeout_ms) = with(app, |st| {
+        let f = &st.prefs.prefs.failover;
+        let selected = st.status.selected_node_id.clone().unwrap_or_default();
+        let in_config = st.session.as_ref().map(|s| s.node_ids.clone()).unwrap_or_default();
+        (
+            selected.clone(),
+            pick_fallback(st, &selected, &in_config),
+            failover::Settings {
+                enabled: f.enabled,
+                failure_rounds: f.failure_rounds.max(1),
+                min_dwell_secs: f.min_dwell_secs as u64,
+                return_stable_secs: f.return_stable_secs as u64,
+                max_switches_per_hour: f.max_switches_per_hour.max(1),
+            },
+            if f.probe_targets.len() >= 2 { f.probe_targets.clone() } else { p.targets.clone() },
+            f.probe_timeout_secs.max(1) * 1000,
+        )
+    });
+    // New selection (manual) → fresh engine with the selected node as primary.
+    if engine.as_ref().is_none_or(|e| e.primary_id() != selected) {
+        let kind = p
+            .configs
+            .iter()
+            .find(|(id, _)| *id == selected)
+            .map(|(_, c)| match c {
+                NodeConfig::Hysteria2(_) => failover::NodeKind::Hysteria2,
+                NodeConfig::VlessReality(_) => failover::NodeKind::VlessReality,
+            })
+            .unwrap_or(failover::NodeKind::Hysteria2);
+        *engine = Some(failover::Engine::new(failover::Node { id: selected.clone(), kind }, fallback));
+    }
+    let e = engine.as_mut().expect("set above");
+    let active = e.active_id().to_string();
+    let (ok, probes) = health(api, &active, &targets, timeout_ms);
+    *latency.lock().unwrap_or_else(|x| x.into_inner()) = if ok { median(&probes) } else { None };
+    let mut decision = e.on_active_round(now, ok, &settings);
+    // Probe the other node when we are on the fallback (return) or the active
+    // node is failing (is there somewhere to go?).
+    if decision == failover::Decision::None
+        && let Some(other) = e.other_id().map(str::to_string)
+        && (e.on_fallback() || !ok)
+    {
+        let (other_ok, _) = health(api, &other, &targets, timeout_ms);
+        decision = e.on_other_round(now, other_ok, &settings);
+    }
+    let _ = HealthCheck {
+        node_id: active.clone(),
+        round_ok: ok,
+        probes,
+        consecutive_failed_rounds: e.consecutive_failed(),
+        at: edge_core::clock::now_rfc3339(),
+    }
+    .emit(app);
+    let earliest = e.earliest_return(&settings).map(|t| {
+        let secs_from_now = t.saturating_sub(now);
+        edge_core::clock::format_unix(
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0) + secs_from_now,
+        )
+    });
+    let primary = e.primary_id().to_string();
+    match decision {
+        failover::Decision::SwitchToFallback { to, reason } | failover::Decision::ReturnToPrimary { to, reason } => {
+            let back = to == primary;
+            update_status(app, Some(&reason), |s| s.state = ConnectionState::FailingOver);
+            let switched = api.select(singbox::TAG_PROXY, &singbox::node_tag(&to));
+            if let Err(err) = switched {
+                logbuf::app(LogLevel::Error, format!("failover switch failed: {err}"));
+                update_status(app, Some("Automatic switch failed"), |s| {
+                    s.state = ConnectionState::Degraded;
+                    s.last_error = Some(AppError::new(ErrorCode::CoreApiUnreachable));
+                });
+                return;
+            }
+            let now_s = edge_core::clock::now_rfc3339();
+            let _ = FailoverEvent {
+                kind: if back { FailoverKind::ReturnedToPrimary } else { FailoverKind::SwitchedToFallback },
+                from_node_id: active.clone(),
+                to_node_id: Some(to.clone()),
+                reason: reason.clone(),
+                at: now_s.clone(),
+            }
+            .emit(app);
+            let _ = ActiveNodeChanged {
+                previous_node_id: Some(active.clone()),
+                node_id: Some(to.clone()),
+                cause: if back { NodeChangeCause::Failback } else { NodeChangeCause::Failover },
+            }
+            .emit(app);
+            logbuf::app(LogLevel::Warn, format!("failover: {reason}"));
+            update_status(app, Some(&reason), |s| {
+                s.state = ConnectionState::Connected;
+                s.active_node_id = Some(to.clone());
+                s.last_error = None;
+                s.failover = (!back).then(|| FailoverStatus {
+                    primary_node_id: primary.clone(),
+                    fallback_node_id: to.clone(),
+                    since: now_s.clone(),
+                    reason: reason.clone(),
+                    earliest_return_at: earliest.clone(),
+                });
+            });
+        }
+        failover::Decision::Suppressed { reason } => {
+            let _ = FailoverEvent {
+                kind: FailoverKind::Suppressed,
+                from_node_id: active.clone(),
+                to_node_id: None,
+                reason: reason.clone(),
+                at: edge_core::clock::now_rfc3339(),
+            }
+            .emit(app);
+            logbuf::app(LogLevel::Warn, format!("failover suppressed: {reason}"));
+            update_status(app, Some(&reason), |s| {
+                s.state = ConnectionState::Degraded;
+                s.last_error = Some(AppError::new(ErrorCode::ProbeFailed));
+            });
+        }
+        failover::Decision::None => {
+            let state = with(app, |st| st.status.state);
+            if ok && state == ConnectionState::Degraded {
+                update_status(app, Some("Health checks passing again"), |s| {
+                    s.state = ConnectionState::Connected;
+                    s.last_error = None;
+                });
+            } else if !ok && state == ConnectionState::Connected {
+                update_status(app, Some("Health checks failing"), |s| {
+                    s.state = ConnectionState::Degraded;
+                    s.last_error = Some(AppError::new(ErrorCode::ProbeFailed));
+                });
+            }
+            if let Some(f) = with(app, |st| st.status.failover.clone())
+                && f.earliest_return_at != earliest
+                && e.on_fallback()
+            {
+                with(app, |st| {
+                    if let Some(x) = st.status.failover.as_mut() {
+                        x.earliest_return_at = earliest.clone();
+                    }
+                });
+            }
+        }
+    }
 }
 
 /// Core died while connected: restart with backoff (1,2,4,8,16,30… s) for up
