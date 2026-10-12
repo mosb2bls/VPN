@@ -2,6 +2,7 @@ pub mod api;
 pub mod core_bin;
 pub mod net;
 pub mod rules;
+mod rules_update;
 mod shell;
 mod state;
 mod store;
@@ -26,6 +27,7 @@ pub fn run() {
             shell::setup(app)?;
             net::session::recover_at_launch(app.handle());
             net::session::auto_connect_at_launch(app.handle());
+            api::commands::spawn_rules_scheduler(app.handle().clone());
             Ok(())
         })
         .run(tauri::generate_context!())
@@ -48,6 +50,7 @@ fn load_state(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let (mut data, mut warnings) = state::AppData::load(&dir, secrets);
     data.data_dir = data_dir;
     let active_rules = app.path().app_data_dir()?.join("rules");
+    data.rules_dir = active_rules.clone();
     data.rules = rules::ensure_active(
         &rules::embedded_manifest(),
         &rules::bundled_dir(app.path().resource_dir().ok()),

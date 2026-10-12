@@ -1,6 +1,6 @@
 # EdgeClient — Backend ↔ UI Interface Specification
 
-**Spec version:** 1.3.4
+**Spec version:** 1.3.5
 **Status:** approved; includes REQ-1 to REQ-4 (Phase B1). "1.0.0" marks a breaking change, not feature completeness — most commands are still stubs.
 **Generated bindings:** `src/api/bindings.ts` (from `src-tauri/src/api/*`, via tauri-specta `=2.0.0-rc.25`)
 
@@ -12,6 +12,7 @@ the disagreement is a backend bug — file a REQ.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.3.5 | 2026-10-12 | **Behaviour (B2 rules):** `update_rules_now` and the scheduled update (setting `rulesAutoUpdate`, every `rulesUpdateIntervalHours`) are real: newest commits of SagerNet `rule-set` branches, validated (size, sanity matches, `sing-box check`), atomic swap, previous rules kept on failure. `RulesStatus` reports `source`, `updatedAt`, `lastCheckAt`, `nextCheckAt`, `updating`, `lastError`. No type changes. |
 | 1.3.4 | 2026-10-12 | **Behaviour (B5):** `set_settings` applies launch-at-login immediately (macOS LaunchAgent / Windows Run key via the Tauri autostart plugin; failure → `LAUNCH_AT_LOGIN_FAILED`, nothing saved); `get_settings.launchAtLogin` reports the real login-item state; auto-connect runs at launch after recovery, only from a clean `disconnected` state; with close-to-tray off, closing the settings window quits (with restore). No type changes. |
 | 1.3.3 | 2026-10-12 | **Behaviour (B4):** automatic failover is implemented as described in §5 (decision engine `edge_core::failover`, unit-tested with simulated sequences); `failoverEvent` (all three kinds), `activeNodeChanged` (`failover` / `failback`), `Status.failover` with `earliestReturnAt`. Real UDP-block test pending (TESTING M-FAILOVER). No type changes. |
 | 1.3.2 | 2026-10-12 | **Behaviour (B3.1, macOS):** `get_helper_status` / `install_helper` / `uninstall_helper` are real (admin prompt); `connect` in **TUN mode** runs through the helper (TUN + IPv6 capture/reject, pf kill switch on core crash, re-attach after app crash). Untested on a real Mac until the owner installs the helper. ADR-0005, ADR-0006. No type changes. |
@@ -226,9 +227,16 @@ timeout 5 s, 3 rounds, dwell 300 s, return-stable 600 s, 4 switches/hour.
 | Command | Params | Returns | Errors | Elevation | B1 |
 |---|---|---|---|---|---|
 | `get_rules_status` | — | `RulesStatus` | — | no | **real** (bundled set; `lastError` = `RULES_MISSING` / `RULES_VALIDATION_FAILED` if the bundled files are absent or damaged) |
-| `update_rules_now` | — | `RulesStatus` | `RULES_UPDATE_IN_PROGRESS`, `RULES_DOWNLOAD_FAILED`, `RULES_VALIDATION_FAILED` | no | stub |
+| `update_rules_now` | — | `RulesStatus` | `RULES_UPDATE_IN_PROGRESS`, `RULES_DOWNLOAD_FAILED`, `RULES_VALIDATION_FAILED` | no | **real** |
 
-On failure the previous rules stay active (failure is recoverable). The result of every
+On failure the previous rules stay active (failure is recoverable). Source: the newest
+commit of `SagerNet/sing-geosite` / `SagerNet/sing-geoip` branch `rule-set` (GitHub API +
+raw file at that exact commit), downloaded through the local proxy when a system-proxy
+session is up. Validation: size limits; `baidu.com` / `qq.com` must match geosite-cn and
+`google.com` must not; `114.114.114.114` / `223.5.5.5` must match geoip-cn and `8.8.8.8`
+must not; a full config using the new files must pass `sing-box check`. A running core
+reloads changed local rule-sets automatically (sing-box ≥ 1.10). Limitation: a TUN session
+uses the helper's own installed copy (updated when the helper is reinstalled). The result of every
 attempt, scheduled or manual, is also emitted as `rulesUpdated`.
 
 ### 2.5 Helper (TUN mode)

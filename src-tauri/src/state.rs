@@ -19,6 +19,10 @@ pub struct AppData {
     pub data_dir: PathBuf,
     /// Running connection, if any.
     pub session: Option<crate::net::session::Session>,
+    /// Active rule-set directory (`<data>/rules`).
+    pub rules_dir: PathBuf,
+    pub rules_updating: bool,
+    pub rules_last_error: Option<AppError>,
 }
 
 impl AppData {
@@ -45,6 +49,19 @@ impl AppData {
             last_restore: None,
         };
         let rules = Err(AppError::new(crate::api::error::ErrorCode::RulesMissing).with_detail("not loaded yet"));
-        (Self { nodes, prefs, status, rules, data_dir: dir.to_path_buf(), session: None }, warnings)
+        (
+            Self {
+                nodes,
+                prefs,
+                status,
+                rules,
+                data_dir: dir.to_path_buf(),
+                session: None,
+                rules_dir: dir.join("rules"),
+                rules_updating: false,
+                rules_last_error: None,
+            },
+            warnings,
+        )
     }
 }

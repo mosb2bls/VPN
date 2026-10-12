@@ -18,7 +18,9 @@ Each agent edits only its own section.
   UDP-block test M-FAILOVER pending. Direct fallback when all nodes fail: not yet.
 - **Lifecycle (B5):** launch at login, auto-connect, close-to-tray implemented (M-LIFECYCLE
   pending).
-- **Stubbed:** `update_rules_now`, `export_diagnostics`. Windows: system proxy, helper.
+- **Rules:** bundled + automatic / manual updates (validated, atomic). TUN uses the
+  helper's installed copy.
+- **Stubbed:** `export_diagnostics`. Windows: system proxy, helper.
 - **Known issues:** `npm run tauri dev` fails if another Vite server holds port 1420; use
   `cargo run -p edge-app`. The helper binary must be built (`cargo build -p edge-helper`)
   before Install works in dev.

@@ -8,7 +8,7 @@
 
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::api::error::{AppError, ErrorCode};
@@ -17,14 +17,21 @@ use crate::store::fsutil;
 
 const EMBEDDED_MANIFEST: &str = include_str!("../../resources/rules/manifest.json");
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct Manifest {
     pub version: String,
     pub sets: Vec<SetEntry>,
+    /// Present in the active manifest (`<data>/rules/active.json`) only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<RulesSource>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_check_at: Option<String>,
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SetEntry {
     pub name: String,
@@ -32,6 +39,31 @@ pub struct SetEntry {
     pub size: u32,
     pub sha256: String,
     pub committed_at: String,
+    #[serde(default)]
+    pub repo: String,
+    #[serde(default)]
+    pub commit: String,
+}
+
+const ACTIVE_MANIFEST: &str = "active.json";
+
+/// The manifest describing the files currently in `active` (falls back to the
+/// embedded one if absent / unreadable).
+pub fn active_manifest(active: &Path) -> Manifest {
+    std::fs::read(active.join(ACTIVE_MANIFEST))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<Manifest>(&b).ok())
+        .unwrap_or_else(|| {
+            let mut m = embedded_manifest();
+            m.source = Some(RulesSource::Bundled);
+            m
+        })
+}
+
+pub fn save_active_manifest(active: &Path, m: &Manifest) -> Result<(), AppError> {
+    let json = serde_json::to_vec_pretty(m).expect("manifest serializes");
+    fsutil::write_atomic(&active.join(ACTIVE_MANIFEST), &json)
+        .map_err(|e| AppError::new(ErrorCode::RulesMissing).with_detail(e.to_string()))
 }
 
 pub fn embedded_manifest() -> Manifest {
@@ -49,7 +81,7 @@ pub fn bundled_dir(resource_dir: Option<PathBuf>) -> PathBuf {
     }
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
+pub fn sha256_hex(bytes: &[u8]) -> String {
     Sha256::digest(bytes).iter().map(|b| format!("{b:02x}")).collect()
 }
 
@@ -64,11 +96,37 @@ pub struct ActiveRules {
     pub geoip_cn: PathBuf,
 }
 
-/// Make sure `active` holds verified copies of every set, copying from
-/// `bundled` where missing or not matching the manifest.
+/// Make sure `active` holds verified rule-sets: keep a previously downloaded
+/// set if its files still match its active manifest; otherwise (missing /
+/// damaged) reinstall the verified bundle described by `manifest`.
 pub fn ensure_active(manifest: &Manifest, bundled: &Path, active: &Path) -> Result<ActiveRules, AppError> {
     fsutil::ensure_private_dir(active)
         .map_err(|e| AppError::new(ErrorCode::RulesMissing).with_detail(e.to_string()))?;
+    if let Ok(b) = std::fs::read(active.join(ACTIVE_MANIFEST))
+        && let Ok(current) = serde_json::from_slice::<Manifest>(&b)
+        && current.source == Some(RulesSource::Downloaded)
+        && current.sets.iter().all(|s| file_ok(&active.join(&s.path), s))
+    {
+        return paths(&current, active);
+    }
+    install_bundle(manifest, bundled, active)?;
+    let mut m = manifest.clone();
+    m.source = Some(RulesSource::Bundled);
+    m.last_check_at = active_manifest(active).last_check_at;
+    save_active_manifest(active, &m)?;
+    paths(&m, active)
+}
+
+fn paths(manifest: &Manifest, active: &Path) -> Result<ActiveRules, AppError> {
+    let path = |name: &str| {
+        manifest.sets.iter().find(|s| s.name == name).map(|s| active.join(&s.path)).ok_or_else(|| {
+            AppError::new(ErrorCode::RulesMissing).with_detail(format!("manifest has no {name}"))
+        })
+    };
+    Ok(ActiveRules { geosite_cn: path("geosite-cn")?, geoip_cn: path("geoip-cn")? })
+}
+
+fn install_bundle(manifest: &Manifest, bundled: &Path, active: &Path) -> Result<(), AppError> {
     for set in &manifest.sets {
         let dest = active.join(&set.path);
         if file_ok(&dest, set) {
@@ -86,23 +144,22 @@ pub fn ensure_active(manifest: &Manifest, bundled: &Path, active: &Path) -> Resu
         fsutil::write_atomic(&dest, &bytes)
             .map_err(|e| AppError::new(ErrorCode::RulesMissing).with_detail(e.to_string()))?;
     }
-    let path = |name: &str| {
-        manifest.sets.iter().find(|s| s.name == name).map(|s| active.join(&s.path)).ok_or_else(|| {
-            AppError::new(ErrorCode::RulesMissing).with_detail(format!("manifest has no {name}"))
-        })
-    };
-    Ok(ActiveRules { geosite_cn: path("geosite-cn")?, geoip_cn: path("geoip-cn")? })
+    Ok(())
 }
 
-/// Status for `get_rules_status` (bundled set; updates arrive in a later step).
+/// Status for `get_rules_status`.
 pub fn status(manifest: &Manifest, last_error: Option<AppError>) -> RulesStatus {
+    status_full(manifest, last_error, false, None)
+}
+
+pub fn status_full(manifest: &Manifest, last_error: Option<AppError>, updating: bool, next_check_at: Option<String>) -> RulesStatus {
     RulesStatus {
         version: manifest.version.clone(),
-        source: RulesSource::Bundled,
+        source: manifest.source.unwrap_or(RulesSource::Bundled),
         updated_at: manifest.sets.iter().map(|s| s.committed_at.clone()).max(),
-        last_check_at: None,
-        next_check_at: None,
-        updating: false,
+        last_check_at: manifest.last_check_at.clone(),
+        next_check_at,
+        updating,
         sets: manifest
             .sets
             .iter()
@@ -123,8 +180,16 @@ mod tests {
             size: data.len() as u32,
             sha256: sha256_hex(data),
             committed_at: "2026-10-10T00:00:00Z".into(),
+            repo: String::new(),
+            commit: String::new(),
         };
-        Manifest { version: "test".into(), sets: vec![entry("geosite-cn", a), entry("geoip-cn", b)] }
+        Manifest {
+            version: "test".into(),
+            sets: vec![entry("geosite-cn", a), entry("geoip-cn", b)],
+            source: None,
+            updated_at: None,
+            last_check_at: None,
+        }
     }
 
     #[test]

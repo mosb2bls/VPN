@@ -430,14 +430,85 @@ pub async fn set_safety_settings(app: AppHandle, settings: SafetySettings) -> Ap
 #[tauri::command]
 #[specta::specta]
 pub async fn get_rules_status(app: AppHandle) -> ApiResult<RulesStatus> {
-    let error = with_state(&app, |st| Ok(st.rules.as_ref().err().cloned()))?;
-    Ok(crate::rules::status(&crate::rules::embedded_manifest(), error))
+    with_state(&app, |st| Ok(rules_status(st)))
+}
+
+fn rules_status(st: &crate::state::AppData) -> RulesStatus {
+    let m = crate::rules::active_manifest(&st.rules_dir);
+    let error = st.rules.as_ref().err().cloned().or_else(|| st.rules_last_error.clone());
+    let a = &st.prefs.prefs.app;
+    let next = a.rules_auto_update.then(|| {
+        let last = m.last_check_at.as_deref().and_then(crate::rules_update::parse_rfc3339).unwrap_or(0);
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        edge_core::clock::format_unix((last + a.rules_update_interval_hours as u64 * 3600).max(now))
+    });
+    crate::rules::status_full(&m, error, st.rules_updating, next)
+}
+
+/// Run one rule update (manual or scheduled). Non-fatal: on failure the
+/// current rules stay active and `rulesUpdated { ok: false }` is emitted.
+pub async fn run_rules_update(app: &AppHandle) -> ApiResult<RulesStatus> {
+    let (dir, proxy_port) = with_state(app, |st| {
+        if st.rules_updating {
+            return Err(AppError::new(ErrorCode::RulesUpdateInProgress));
+        }
+        st.rules_updating = true;
+        Ok((st.rules_dir.clone(), st.session.as_ref().filter(|s| !s.tun && s.mixed_port > 0).map(|s| s.mixed_port)))
+    })?;
+    let result = match crate::core_bin::locate_verified() {
+        Ok(bin) => tauri::async_runtime::spawn_blocking(move || crate::rules_update::update(&bin, &dir, proxy_port))
+            .await
+            .unwrap_or_else(|_| Err(AppError::new(ErrorCode::Internal))),
+        Err(e) => Err(e),
+    };
+    let (ok, changed) = (result.is_ok(), result.as_ref().is_ok_and(|o| o.changed));
+    let status = with_state(app, |st| {
+        st.rules_updating = false;
+        match &result {
+            Ok(o) => {
+                st.rules_last_error = None;
+                st.rules = crate::rules::ensure_active(&o.manifest, &st.rules_dir.clone(), &st.rules_dir.clone())
+                    .or_else(|_| st.rules.clone());
+            }
+            Err(e) => st.rules_last_error = Some(e.clone()),
+        }
+        Ok(rules_status(st))
+    })?;
+    crate::net::logbuf::app(
+        if ok { LogLevel::Info } else { LogLevel::Warn },
+        match &result {
+            Ok(o) => format!("rules update: {}", if o.changed { format!("installed {}", o.manifest.version) } else { "already current".into() }),
+            Err(e) => format!("rules update failed: {:?} {}", e.code, e.detail.as_deref().unwrap_or("")),
+        },
+    );
+    let _ = super::events::RulesUpdated { ok, changed, status: status.clone() }.emit(app);
+    result.map(|_| status)
+}
+
+/// Background schedule: check every 30 min whether an update is due.
+pub fn spawn_rules_scheduler(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+        loop {
+            let due = with_state(&app, |st| {
+                let a = &st.prefs.prefs.app;
+                let m = crate::rules::active_manifest(&st.rules_dir);
+                let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+                Ok(a.rules_auto_update && crate::rules_update::due(m.last_check_at.as_deref(), a.rules_update_interval_hours, now))
+            })
+            .unwrap_or(false);
+            if due {
+                let _ = run_rules_update(&app).await;
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(1800)).await;
+        }
+    });
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn update_rules_now() -> ApiResult<RulesStatus> {
-    Err(AppError::not_implemented("update_rules_now"))
+pub async fn update_rules_now(app: AppHandle) -> ApiResult<RulesStatus> {
+    run_rules_update(&app).await
 }
 
 // ---------------------------------------------------------------------------
