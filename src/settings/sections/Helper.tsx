@@ -2,13 +2,14 @@
 import { useState } from "react";
 import { commands } from "../../api/client";
 import type { AppError } from "../../api/bindings";
-import { useApp } from "../../state/store";
+import { selectTunUnavailable, useApp } from "../../state/store";
 import { isProxying } from "../../popover/view";
 import { Button, ErrorNote, Note, SectionHeader } from "../kit";
 
 export function HelperSection() {
   const helper = useApp((s) => s.helper);
   const status = useApp((s) => s.status);
+  const unavailable = useApp(selectTunUnavailable);
   const [busy, setBusy] = useState<null | "install" | "uninstall">(null);
   const [error, setError] = useState<AppError | null>(null);
   const tunLive = !!status && status.captureMode === "tun" && isProxying(status);
@@ -30,6 +31,17 @@ export function HelperSection() {
         : helper.running
           ? "Installed and running"
           : "Installed, not responding";
+
+  if (unavailable)
+    return (
+      <div className="flex flex-col gap-5">
+        <SectionHeader index="06 / Helper" title="Helper" />
+        <Note tone="info" title="Not available on Windows yet">
+          The helper and TUN (whole-device) mode are coming later for Windows. Use System proxy mode for now — it covers apps that use the
+          system proxy setting.
+        </Note>
+      </div>
+    );
 
   return (
     <div className="flex flex-col gap-5">

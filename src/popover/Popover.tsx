@@ -18,7 +18,7 @@ import { openTimeline, stateTimeline as ST } from "../design/motion";
 import type { CaptureMode, ImportResult, RoutingMode, Status } from "../api/bindings";
 import type { Result } from "../api/types";
 import { protocolBadge, rate, since, transport } from "../lib/format";
-import { applyStatus, selectLastEvent, useApp } from "../state/store";
+import { applyStatus, selectLastEvent, selectTunUnavailable, useApp } from "../state/store";
 import { Frame, MetaLabel } from "../ui/Frame";
 import { Segmented } from "../ui/Segmented";
 import { MotionGate, useMotionOk } from "../ui/motionGate";
@@ -159,10 +159,15 @@ export function Popover() {
     else if (a === "open_nodes") void run(commands.openSettings("nodes"));
     else if (a === "open_logs") void run(commands.openSettings("logs"));
     else if (a === "import_clipboard") void importClipboard();
+    else if (a === "open_safety") void run(commands.openSettings("safety"));
+    else if (a === "use_system_proxy") void run(commands.setCaptureMode("system_proxy"));
   };
 
   const shown = status ? nodes.find((n) => n.id === (status.activeNodeId ?? status.selectedNodeId)) : undefined;
-  const view = status ? derivePopoverView(status, reason, helper, restore, nodes) : null;
+  const tunUnavailable = useApp(selectTunUnavailable);
+  const view = status ? derivePopoverView(status, reason, helper, restore, nodes, { tunUnavailable }) : null;
+  /** Direct fallback active: no node carries traffic (SPEC 1.4.0). */
+  const directFallback = !!status?.failover?.direct;
   const live = !!status?.connectedSince && (status.state === "direct" || isProxying(status));
 
   // Last row: an action error wins; otherwise the latest event, muted when stale.
@@ -201,7 +206,11 @@ export function Popover() {
         tl="EdgeClient"
         tr="01 / Status"
         bl={(() => {
-          const t = shown ? `${protocolBadge(shown.protocol)} · ${transport(shown.protocol)} ${shown.port}` : "No node";
+          const t = directFallback
+            ? "Direct · no proxy"
+            : shown
+              ? `${protocolBadge(shown.protocol)} · ${transport(shown.protocol)} ${shown.port}`
+              : "No node";
           return <Swap k={t}>{t}</Swap>;
         })()}
         br={<Rolling value={since(live ? status?.connectedSince : null, now)} className={`tabular ${live ? "text-ink" : "text-ink-muted"}`} />}
@@ -227,7 +236,7 @@ export function Popover() {
               onClick={() => (nodes.length ? setSheet(true) : act("open_nodes"))}
             >
               <MetaLabel muted>
-                <Swap k={view.onFallback ? "fallback" : "node"}>{view.onFallback ? "Node · on fallback" : "Node"}</Swap>
+                <Swap k={directFallback ? "direct" : view.onFallback ? "fallback" : "node"}>{directFallback ? "Node · not in use" : view.onFallback ? "Node · on fallback" : "Node"}</Swap>
               </MetaLabel>
               <span className="mt-1 flex items-center gap-2">
                 {/* Motion moment 3: on a node change the row slides to the new node. */}
@@ -271,7 +280,9 @@ export function Popover() {
               <Segmented label="Routing mode" options={ROUTING} value={status.routingMode} onChange={(m) => void run(commands.setRoutingMode(m))} />
             </Row>
             <Row label="Capture">
-              <Segmented label="Capture mode" options={CAPTURE} value={status.captureMode} onChange={(m) => void run(commands.setCaptureMode(m))} />
+              <Segmented label="Capture mode" options={CAPTURE.map((o) =>
+                  o.value === "tun" && tunUnavailable ? { ...o, disabled: true, title: "TUN is not available on Windows yet" } : o,
+                )} value={status.captureMode} onChange={(m) => void run(commands.setCaptureMode(m))} />
             </Row>
 
             {view.notice ? (
@@ -302,7 +313,7 @@ export function Popover() {
               aria-label="Last event — open details"
               // Click for details (prompt §5): failover reasons → Failover, everything else → Logs.
               onClick={() =>
-                void run(commands.openSettings(!actionNote && lastEvent && /fallback|primary|probe|failover|switch/i.test(lastEvent.text) ? "failover" : "logs"))
+                void run(commands.openSettings(!actionNote && lastEvent && /fallback|primary|probe|failover|switch|direct|all nodes/i.test(lastEvent.text) ? "failover" : "logs"))
               }
             >
               <MetaLabel muted>Last</MetaLabel>

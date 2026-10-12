@@ -49,8 +49,8 @@ export function SafetySection() {
               />
             }
           >
-            If every node fails, send traffic out directly instead of blocking it. Off by default (fail closed).
-            <span className="mt-1 block text-mustard-text">Not active in this build yet: the setting is saved but has no effect.</span>
+            If every node fails, send traffic out directly instead of blocking it, and switch back to the proxy as soon as a node recovers.
+            Off by default (fail closed). A change takes effect the next time you connect.
           </SettingRow>
           {confirmFallback && (
             <Note tone="error" title="Turn on direct fallback?">

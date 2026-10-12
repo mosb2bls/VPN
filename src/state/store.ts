@@ -4,6 +4,7 @@ import { useSyncExternalStore } from "react";
 import { commands, on } from "../api/client";
 import type {
   AppError,
+  AppInfo,
   HealthCheck,
   HelperStatus,
   Node,
@@ -32,6 +33,8 @@ export interface AppState {
   stats: TrafficStats | null;
   health: HealthCheck | null;
   helper: HelperStatus | null;
+  /** Versions and platform (Windows has no TUN yet — SPEC 1.4.1). */
+  appInfo: AppInfo | null;
   recovery: RecoveryReport | null;
   /** Latest restore (SPEC §2.7). Incomplete ⇒ networking is NOT back to normal. */
   restore: RestoreReport | null;
@@ -48,6 +51,7 @@ let state: AppState = {
   stats: null,
   health: null,
   helper: null,
+  appInfo: null,
   recovery: null,
   restore: null,
   activity: [],
@@ -101,7 +105,10 @@ export async function startStore() {
     on("trafficStatsUpdated", (p) => set({ stats: p.stats })),
     on("healthCheck", (p) => set({ health: p })),
     on("helperStatusChanged", (p) => set({ helper: p.status })),
-    on("failoverEvent", (p) => pushActivity(p.kind === "suppressed" ? "warn" : "info", p.reason, undefined, p.at)),
+    on("failoverEvent", (p) =>
+      // switched_to_direct (SPEC 1.4.0) means traffic is now unprotected: error-level.
+      pushActivity(p.kind === "switched_to_direct" ? "error" : p.kind === "suppressed" ? "warn" : "info", p.reason, undefined, p.at),
+    ),
     on("activeNodeChanged", (p) => {
       // Only a live switch between nodes; connect/disconnect also emit this (null ↔ id).
       if (p.cause === "manual" && p.nodeId && p.previousNodeId) pushActivity("info", `Switched to ${nodeName(p.nodeId)}`);
@@ -133,7 +140,12 @@ export async function startStore() {
     }),
   ]);
 
-  const [status, nodes, helper] = await Promise.all([commands.getStatus(), commands.listNodes(), commands.getHelperStatus()]);
+  const [status, nodes, helper, appInfo] = await Promise.all([
+    commands.getStatus(),
+    commands.listNodes(),
+    commands.getHelperStatus(),
+    commands.getAppInfo(),
+  ]);
   const bootError =
     status.status === "error" ? status.error : nodes.status === "error" ? nodes.error : null;
   set({
@@ -142,6 +154,7 @@ export async function startStore() {
     status: status.status === "ok" ? status.data : state.status,
     nodes: nodes.status === "ok" ? nodes.data : state.nodes,
     helper: helper.status === "ok" ? helper.data : state.helper,
+    appInfo: appInfo.status === "ok" ? appInfo.data : state.appInfo,
     recovery: status.status === "ok" ? status.data.lastRecovery : null,
     restore: status.status === "ok" ? status.data.lastRestore : null,
   });
@@ -165,3 +178,6 @@ export const selectNotRestored = (s: AppState): boolean => s.restore !== null &&
 
 /** The most recent failover reason or error, for the popover's one-line slot. */
 export const selectLastEvent = (s: AppState): Activity | null => s.activity[0] ?? null;
+
+/** TUN / helper are not available on this platform yet (Windows, SPEC 1.4.1). */
+export const selectTunUnavailable = (s: AppState): boolean => s.appInfo?.platform === "windows";

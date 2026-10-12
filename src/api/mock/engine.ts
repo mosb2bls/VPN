@@ -120,7 +120,9 @@ export type ScenarioId =
   | "recovering"
   | "error"
   | "restore_incomplete"
-  | "restore_incomplete_proxy";
+  | "restore_incomplete_proxy"
+  | "unprotected"
+  | "all_down";
 
 export const SCENARIOS: { id: ScenarioId; label: string }[] = [
   { id: "off", label: "OFF" },
@@ -140,6 +142,8 @@ export const SCENARIOS: { id: ScenarioId; label: string }[] = [
   { id: "error", label: "ERROR" },
   { id: "restore_incomplete", label: "NOT RESTORED · TUN" },
   { id: "restore_incomplete_proxy", label: "NOT RESTORED · proxy" },
+  { id: "unprotected", label: "UNPROTECTED · direct fallback" },
+  { id: "all_down", label: "ALL NODES DOWN" },
 ];
 
 // ─────────────────────────────── helpers ────────────────────────────────
@@ -236,6 +240,12 @@ export class MockEngine {
   private testing = new Set<string>();
   private testSlots = 0;
   private testQueue: (() => void)[] = [];
+
+  /** Dev: `?platform=windows` on the dev page simulates Windows (no TUN / helper). */
+  private platformOverride: AppInfo["platform"] | null = (() => {
+    const p = typeof location !== "undefined" ? new URLSearchParams(location.search).get("platform") : null;
+    return p === "windows" || p === "macos" ? p : null;
+  })();
 
   /** Bumped to cancel any running state sequence. */
   private gen = 0;
@@ -390,6 +400,7 @@ export class MockEngine {
   }
 
   private healthRound() {
+    if (this.status.failover?.direct && this.status.state === "degraded") return this.directRound();
     const st = this.status.state;
     const active = this.status.activeNodeId;
     if (!active || (st !== "connected" && st !== "degraded")) return;
@@ -457,6 +468,63 @@ export class MockEngine {
     this.emit("failoverEvent", { kind: "suppressed", fromNodeId: fromId, toNodeId: null, reason, at: nowIso() });
   }
 
+  /** Every node is failing: go direct (direct fallback on) or stay blocked and report it. */
+  private allNodesFailing(fromId: string) {
+    const reasonBlocked = "All nodes failing — traffic stays blocked until a node recovers";
+    if (!this.safety.directFallback) {
+      this.suppress(fromId, reasonBlocked);
+      if (this.status.lastError?.code !== "ALL_NODES_FAILED")
+        this.setStatus({ state: "degraded", lastError: appError("ALL_NODES_FAILED", { recoverable: false }) }, reasonBlocked);
+      return;
+    }
+    if (this.status.failover?.direct) return;
+    ++this.gen;
+    const reason = "All nodes failing — direct fallback: traffic is going out directly, unprotected";
+    const primary = this.status.failover?.primaryNodeId ?? fromId;
+    this.failedRounds = 0;
+    this.suppressedThisStreak = false;
+    this.setActive(null, "failover");
+    this.emit("failoverEvent", { kind: "switched_to_direct", fromNodeId: fromId, toNodeId: null, reason, at: nowIso() });
+    this.log("warn", "app", reason);
+    this.stats = { ...this.stats, latencyMs: null };
+    this.setStatus(
+      {
+        state: "degraded",
+        lastError: appError("DIRECT_FALLBACK_ACTIVE"),
+        failover: { primaryNodeId: primary, fallbackNodeId: "", since: nowIso(), reason, earliestReturnAt: null, direct: true },
+      },
+      reason,
+    );
+  }
+
+  /** While direct: test the primary, then the fallback; leave direct as soon as one passes. */
+  private directRound() {
+    const fo = this.status.failover!;
+    const primary = this.node(fo.primaryNodeId);
+    const other = this.nodes.find((n) => n.protocol !== primary?.protocol);
+    const pick = primary && this.health(primary.id) !== "fail" ? primary : other && this.health(other.id) !== "fail" ? other : null;
+    this.emit("healthCheck", { ...this.probeRound(primary?.id ?? ""), consecutiveFailedRounds: 0 });
+    if (!pick) return;
+    const back = pick.id === fo.primaryNodeId;
+    const reason = `${protoLabel(pick)} is reachable again — leaving direct fallback`;
+    this.setActive(pick.id, back ? "failback" : "failover");
+    this.emit("failoverEvent", {
+      kind: back ? "returned_to_primary" : "switched_to_fallback",
+      fromNodeId: fo.primaryNodeId,
+      toNodeId: pick.id,
+      reason,
+      at: nowIso(),
+    });
+    this.setStatus(
+      {
+        state: "connected",
+        lastError: null,
+        failover: back ? null : { primaryNodeId: fo.primaryNodeId, fallbackNodeId: pick.id, since: nowIso(), reason, earliestReturnAt: null, direct: false },
+      },
+      reason,
+    );
+  }
+
   async tryFailover(force = false) {
     const fromId = this.status.activeNodeId;
     if (!fromId) return;
@@ -464,6 +532,8 @@ export class MockEngine {
     const to = this.resolveFallback(fromId);
     const hourAgo = Date.now() - 3_600_000;
     this.switchTimes = this.switchTimes.filter((t) => t > hourAgo);
+    // SPEC 1.4.0 §5: all nodes failing = no other node, or its background probe fails too.
+    if (!force && (!to || this.health(to.id) === "fail")) return this.allNodesFailing(fromId);
     if (!to) return this.suppress(fromId, `${protoLabel(from)} failing and no fallback node is available`);
     if (!force && !this.dwellElapsed())
       return this.suppress(fromId, `Minimum time on node (${Math.round(this.failoverSettings.minDwellSecs / 60)} min) not elapsed`);
@@ -1075,6 +1145,8 @@ export class MockEngine {
     getHelperStatus: () => this.call("getHelperStatus", () => ok(clone(this.helper))),
     installHelper: () =>
       this.call("installHelper", async () => {
+        // SPEC 1.4.1: no helper / TUN on Windows yet.
+        if (this.appInfo().platform === "windows") return fail(appError("UNSUPPORTED_PLATFORM"));
         this.log("info", "app", "Requesting administrator approval to install helper");
         await this.sleep(2500);
         const o = this.dev.helperInstallOutcome;
@@ -1182,7 +1254,7 @@ export class MockEngine {
       appVersion: "0.1.0",
       specVersion: SPEC_VERSION,
       coreVersion: this.dev.stubMode ? null : "0.0.0-mock",
-      platform: /Windows/.test(ua) ? "windows" : /Mac/.test(ua) ? "macos" : "other",
+      platform: this.platformOverride ?? (/Windows/.test(ua) ? "windows" : /Mac/.test(ua) ? "macos" : "other"),
     };
   }
 
@@ -1318,6 +1390,21 @@ export class MockEngine {
         s = { ...base, state: "error", lastError: appError("CORE_START_FAILED", { detail: "mock: sing-box exited with code 1" }) };
         why = "Connection failed — network settings rolled back";
         break;
+      case "unprotected": {
+        const reason = "All nodes failing — direct fallback: traffic is going out directly, unprotected";
+        s = live({
+          state: "degraded",
+          activeNodeId: null,
+          lastError: appError("DIRECT_FALLBACK_ACTIVE"),
+          failover: sel ? { primaryNodeId: sel, fallbackNodeId: "", since: nowIso(), reason, earliestReturnAt: null, direct: true } : null,
+        });
+        why = reason;
+        break;
+      }
+      case "all_down":
+        s = live({ state: "degraded", lastError: appError("ALL_NODES_FAILED", { recoverable: false }) });
+        why = "All nodes failing — traffic stays blocked until a node recovers";
+        break;
       case "restore_incomplete":
       case "restore_incomplete_proxy": {
         const tun = id === "restore_incomplete";
@@ -1382,6 +1469,13 @@ export class MockEngine {
 
   setNodeHealth(id: string, h: NodeHealth) {
     this.setDev({ nodeHealth: { ...this.dev.nodeHealth, [id]: h }, autoProbes: true });
+  }
+
+  /** Every node fails its probes: all-nodes-failing path (direct fallback or ALL_NODES_FAILED). */
+  simulateAllDown() {
+    const all = Object.fromEntries(this.nodes.map((n) => [n.id, "fail" as const]));
+    this.lastSwitchAt = 0;
+    this.setDev({ nodeHealth: all, autoProbes: true });
   }
 
   /** Make HY2 fail its probes so the natural failover path runs. */

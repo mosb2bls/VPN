@@ -1,7 +1,7 @@
 # EdgeClient — UI notes
 
 Owner: UI agent. Approved design decisions, tokens and frontend structure.
-Built against **SPEC v1.3.6**.
+Built against **SPEC v1.4.1**.
 
 ## 1. Approved decisions (U0)
 
@@ -35,6 +35,9 @@ Built against **SPEC v1.3.6**.
 | D27 | DIRECT stays as hollow outlined letters. |
 | D28 | Popover "Last" line opens details: failover reasons → Settings › Failover (recent events), anything else → Settings › Logs. |
 | D29 | Settings copy follows real behaviour: with "Keep running" off, closing Settings quits (disconnect + restore first, SPEC 1.3.4); Direct fallback is marked "not active in this build yet" until the backend implements it. |
+| D30 | **UNPROTECTED** (direct fallback active, SPEC 1.4.0: `failover.direct` / `DIRECT_FALLBACK_ACTIVE`): vermilion word, sub "All nodes failing — traffic is going out directly", error notice "Traffic is not protected" + link to Safety, solid DISCONNECT, node label "Node · not in use", corner `DIRECT · NO PROXY`. `switched_to_direct` is an error-level activity. |
+| D31 | **ALL NODES DOWN** (direct fallback off, `ALL_NODES_FAILED`): vermilion word, sub "Traffic is blocked to prevent leaks", error notice "No node is reachable" (+ system-proxy caveat), link Test nodes, outline DISCONNECT. D30/D31 rank right after BLOCKED and NOT RESTORED. |
+| D32 | Windows (SPEC 1.4.1, platform from `getAppInfo`): TUN option disabled with "not available on Windows yet" in popover and Connection (arrow keys skip it); Helper section explains instead of offering install; a stored TUN preference shows OFF + USE SYSTEM PROXY. |
 | D8 | **NOT RESTORED** (partial restore, SPEC §2.7): shown whenever `lastRestore.fullyRestored` is false and the app is not proxying; never looks like OFF. Lists each failed/skipped item, offers Retry (Restore networking) and explains `--restore-networking`. Only an engaged kill switch (BLOCKED) ranks above it. |
 
 ## 2. Frontend structure

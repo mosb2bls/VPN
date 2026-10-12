@@ -43,7 +43,7 @@ export function FailoverSection() {
     });
   const dirty = r.dirty || (targets !== null && targets !== r.saved?.probeTargets.join("\n"));
   const fallback = nodes.find((n) => n.id === d.fallbackNodeId);
-  const reasons = activity.filter((a) => /probe|fallback|primary|switch|failover/i.test(a.text)).slice(0, 8);
+  const reasons = activity.filter((a) => /probe|fallback|primary|switch|failover|direct|all nodes/i.test(a.text)).slice(0, 8);
 
   return (
     <div className="flex flex-col gap-5">

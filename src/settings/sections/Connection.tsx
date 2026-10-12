@@ -3,7 +3,7 @@ import { useState } from "react";
 import { commands } from "../../api/client";
 import type { AppError, CaptureMode, DnsProfile, RoutingMode } from "../../api/bindings";
 import type { Result } from "../../api/types";
-import { applyStatus, useApp } from "../../state/store";
+import { applyStatus, selectTunUnavailable, useApp } from "../../state/store";
 import { Segmented } from "../../ui/Segmented";
 import { isProxying } from "../../popover/view";
 import { Button, ErrorNote, Note, SectionHeader } from "../kit";
@@ -12,6 +12,7 @@ import { useGoTo } from "../nav";
 export function ConnectionSection() {
   const status = useApp((s) => s.status);
   const helper = useApp((s) => s.helper);
+  const tunUnavailable = useApp(selectTunUnavailable);
   const [error, setError] = useState<AppError | null>(null);
   const goTo = useGoTo();
   if (!status) return null;
@@ -34,7 +35,7 @@ export function ConnectionSection() {
           label="Capture mode"
           options={[
             { value: "system_proxy", label: "System proxy" },
-            { value: "tun", label: "TUN — whole device" },
+            { value: "tun", label: "TUN — whole device", disabled: tunUnavailable, title: tunUnavailable ? "Not available on Windows yet" : undefined },
           ]}
           value={status.captureMode}
           onChange={(m) => void run(commands.setCaptureMode(m))}
@@ -49,7 +50,8 @@ export function ConnectionSection() {
             All traffic goes through EdgeClient. The kill switch blocks traffic while the proxy is down, so nothing leaks.
           </Note>
         )}
-        {status.captureMode === "tun" && helper && (!helper.installed || helper.needsUpgrade) && (
+        {tunUnavailable && <p className="text-secondary text-ink-muted">TUN (whole-device) mode is not available on Windows yet.</p>}
+        {!tunUnavailable && status.captureMode === "tun" && helper && (!helper.installed || helper.needsUpgrade) && (
           <Note tone="warn" title={helper.installed ? "The helper needs to be reinstalled" : "TUN needs the helper"}>
             <div className="flex items-center gap-3">
               <span>A one-time install with your administrator password.</span>

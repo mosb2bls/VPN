@@ -9,7 +9,17 @@ import type { ConnectionState, HelperStatus, Node, RestoreReport, Status } from 
 
 /** Colour of the state word. `hollow` = outlined letters (DIRECT). */
 export type Tone = "ink" | "amber" | "cobalt" | "vermilion" | "hollow";
-export type Action = "connect" | "disconnect" | "restore" | "open_helper" | "open_nodes" | "open_logs" | "import_clipboard" | "none";
+export type Action =
+  | "connect"
+  | "disconnect"
+  | "restore"
+  | "open_helper"
+  | "open_nodes"
+  | "open_logs"
+  | "open_safety"
+  | "import_clipboard"
+  | "use_system_proxy"
+  | "none";
 
 export interface Notice {
   /** error = vermilion bar, warn = mustard bar, info = ink bar. Text is always ink on paper (D14). */
@@ -55,12 +65,14 @@ export function derivePopoverView(
   helper: HelperStatus | null,
   restore: RestoreReport | null,
   nodes: Node[],
+  /** TUN / helper not available on this platform (Windows, SPEC 1.4.1). */
+  opts: { tunUnavailable?: boolean } = {},
 ): PopoverView {
   const shown = nodes.find((n) => n.id === (status.activeNodeId ?? status.selectedNodeId));
   const proxying = isProxying(status);
   const restoreIncomplete = !!restore && !restore.fullyRestored && !proxying && status.state !== "connecting";
   const helperMissing = status.captureMode === "tun" && helper !== null && !helper.installed;
-  const base = { notice: null as Notice | null, subMono: false, onFallback: !!status.failover };
+  const base = { notice: null as Notice | null, subMono: false, onFallback: !!status.failover && !status.failover.direct };
   const solid = (label: string, action: Action, disabled = false) => ({ label, action, disabled, variant: "solid" as const });
   const outline = (label: string, action: Action, disabled = false) => ({ label, action, disabled, variant: "outline" as const });
 
@@ -126,6 +138,44 @@ export function derivePopoverView(
         }
       : null;
 
+  // All nodes failing (SPEC 1.4.0, §5). Direct fallback on → traffic is going out
+  // unprotected; off → traffic stays blocked. Both rank right after BLOCKED / NOT RESTORED.
+  if (proxying && (status.failover?.direct || status.lastError?.code === "DIRECT_FALLBACK_ACTIVE"))
+    return {
+      ...base,
+      key: "unprotected",
+      word: "UNPROTECTED",
+      tone: "vermilion",
+      sub: "All nodes failing — traffic is going out directly",
+      notice: {
+        tone: "error",
+        title: "Traffic is not protected",
+        lines: [
+          "Every node is failing and direct fallback is on, so traffic goes out directly — visible to your network. EdgeClient switches back to the proxy as soon as a node recovers.",
+        ],
+        links: [{ label: "Direct fallback settings", action: "open_safety" }],
+      },
+      primary: solid("DISCONNECT", "disconnect"),
+    };
+  if (proxying && status.lastError?.code === "ALL_NODES_FAILED")
+    return {
+      ...base,
+      key: "all_down",
+      word: "ALL NODES DOWN",
+      tone: "vermilion",
+      sub: "Traffic is blocked to prevent leaks",
+      notice: {
+        tone: "error",
+        title: "No node is reachable",
+        lines: [
+          "EdgeClient keeps checking and reconnects as soon as a node answers.",
+          ...(status.captureMode === "system_proxy" ? ["In system proxy mode, apps that ignore the proxy still connect directly."] : []),
+        ],
+        links: [{ label: "Test nodes", action: "open_nodes" }],
+      },
+      primary: outline("DISCONNECT", "disconnect"),
+    };
+
   switch (status.state) {
     case "disconnected":
       if (nodes.length === 0)
@@ -160,6 +210,21 @@ export function derivePopoverView(
             links: [{ label: "Edit node", action: "open_nodes" }],
           },
           primary: solid("CONNECT", "connect", true),
+        };
+      if (status.captureMode === "tun" && opts.tunUnavailable)
+        return {
+          ...base,
+          key: "tun_unavailable",
+          word: "OFF",
+          tone: "ink",
+          sub: "TUN mode is not available on Windows yet",
+          notice: {
+            tone: "info",
+            title: "Use System proxy on Windows",
+            lines: ["Whole-device (TUN) mode is coming later for Windows. System proxy covers apps that use the system proxy setting."],
+            links: [],
+          },
+          primary: solid("USE SYSTEM PROXY", "use_system_proxy"),
         };
       if (helperMissing)
         return {

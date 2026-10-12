@@ -7,6 +7,9 @@ import { segmentTimeline } from "../design/motion";
 export interface SegmentedOption<T extends string> {
   value: T;
   label: string;
+  /** Option not available (e.g. TUN on Windows); `title` says why. */
+  disabled?: boolean;
+  title?: string;
 }
 
 export function Segmented<T extends string>({
@@ -27,7 +30,11 @@ export function Segmented<T extends string>({
     const d = e.key === "ArrowRight" || e.key === "ArrowDown" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowUp" ? -1 : 0;
     if (!d) return;
     e.preventDefault();
-    onChange(options[(idx + d + options.length) % options.length].value);
+    // Next enabled option in that direction (skips e.g. TUN on Windows).
+    for (let step = 1; step < options.length; step++) {
+      const o = options[(idx + d * step + options.length * step) % options.length];
+      if (!o.disabled) return onChange(o.value);
+    }
   };
   return (
     <div
@@ -56,7 +63,8 @@ export function Segmented<T extends string>({
             role="radio"
             aria-checked={on}
             tabIndex={on ? 0 : -1}
-            disabled={disabled}
+            disabled={disabled || o.disabled}
+            title={o.title}
             onClick={() => onChange(o.value)}
             className={`label relative z-10 border-l border-ink first:border-l-0 transition-colors duration-base ease-enter ${
               on ? "text-paper" : "text-ink hover:bg-ink/5"

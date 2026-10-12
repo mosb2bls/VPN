@@ -66,6 +66,7 @@ export function DevPanel() {
         <h4>Flows (real transitions)</h4>
         <div className="dev-grid">
           <button onClick={() => mockEngine.simulateUdpBlocked()}>HY2 UDP blocked → failover</button>
+          <button onClick={() => mockEngine.simulateAllDown()}>All nodes down</button>
           <button onClick={() => mockEngine.restoreAllHealth()}>All nodes healthy</button>
           <button onClick={() => void mockEngine.tryFailover(true)}>Force failover now</button>
           <button onClick={() => void mockEngine.failback()}>Force failback now</button>
@@ -187,6 +188,19 @@ export function DevPanel() {
         <Select<string> label="speed ×" value={String(dev.timeScale)} options={["0.5", "1", "2", "4"]} onChange={(v) => mockEngine.setDev({ timeScale: Number(v) })} />
         <Select<string> label="IPC delay ms" value={String(dev.ipcDelayMs)} options={["0", "120", "600", "2000"]} onChange={(v) => mockEngine.setDev({ ipcDelayMs: Number(v) })} />
         <button onClick={() => mockEngine.resetAll()}>Reset everything</button>
+        <label className="dev-check">
+          <input
+            type="checkbox"
+            checked={new URLSearchParams(location.search).get("platform") === "windows"}
+            onChange={(e) => {
+              const u = new URL(location.href);
+              if (e.target.checked) u.searchParams.set("platform", "windows");
+              else u.searchParams.delete("platform");
+              location.href = u.toString();
+            }}
+          />
+          Simulate Windows (no TUN / helper) — reloads
+        </label>
       </section>
 
       <EventMonitor />
