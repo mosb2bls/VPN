@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { swapTimeline as S } from "../design/motion";
+import { useMotionOk } from "./motionGate";
 
 export function Swap({
   k,
@@ -16,6 +17,13 @@ export function Swap({
   className?: string;
 }) {
   const slide = variant === "slideX";
+  const animate = useMotionOk();
+  if (!animate)
+    return (
+      <span className={`inline-grid ${className}`}>
+        <span className="min-w-0">{children}</span>
+      </span>
+    );
   return (
     <span className={`inline-grid ${slide ? "overflow-hidden" : ""} ${className}`}>
       <AnimatePresence initial={false}>

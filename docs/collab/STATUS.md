@@ -31,7 +31,7 @@ Each agent edits only its own section.
 
 ## UI
 
-- **Phase/step:** U2.4.3 — motion moment 3: failover (awaiting owner review)
+- **Phase/step:** U2.4.4 — motion moment 4: numbers (awaiting owner review)
 - **SPEC version:** 1.3.0 (`RULES_MISSING` in mock; rules status shaped like the real bundle)
 - **Real / stubbed:** `src/api/client.ts` wraps `bindings.ts` (real inside Tauri, mock in a
   browser; `VITE_USE_MOCK` overrides). Mock simulates every SPEC command, event and error

@@ -21,9 +21,11 @@ import { protocolBadge, rate, since, transport } from "../lib/format";
 import { applyStatus, selectLastEvent, useApp } from "../state/store";
 import { Frame, MetaLabel } from "../ui/Frame";
 import { Segmented } from "../ui/Segmented";
+import { MotionGate, useMotionOk } from "../ui/motionGate";
+import { Rolling } from "../ui/Rolling";
 import { Swap } from "../ui/Swap";
 import { NodeSheet } from "./NodeSheet";
-import { TONE_CLASS, derivePopoverView, isProxying, type Action, type Notice } from "./view";
+import { TONE_CLASS, derivePopoverView, isProxying, type Action, type Notice, type Tone } from "./view";
 
 const ROUTING = [
   { value: "rule", label: "Rule" },
@@ -156,6 +158,7 @@ export function Popover() {
       animate={{ opacity: hiding ? 0 : 1 }}
       transition={hiding === "parked" ? { duration: 0 } : hiding ? openTimeline.hide : openTimeline.paper}
     >
+      <MotionGate.Provider value={hiding === null}>
       <Frame
         animate={!instant}
         width={340}
@@ -170,7 +173,7 @@ export function Popover() {
           const t = shown ? `${protocolBadge(shown.protocol)} · ${transport(shown.protocol)} ${shown.port}` : "No node";
           return <Swap k={t}>{t}</Swap>;
         })()}
-        br={<span className={`tabular ${live ? "text-ink" : "text-ink-muted"}`}>{since(live ? status?.connectedSince : null, now)}</span>}
+        br={<Rolling value={since(live ? status?.connectedSince : null, now)} className={`tabular ${live ? "text-ink" : "text-ink-muted"}`} />}
       >
         {!status || !view ? (
           <div className="grid h-full place-items-center">
@@ -180,34 +183,8 @@ export function Popover() {
           <div className="grid h-full grid-cols-1 px-3" style={{ gridTemplateRows: "repeat(17, 24px)" }}>
             {/* rows 1–4 · state */}
             <div className="row-span-4 flex flex-col justify-end gap-1.5 pb-3">
-              {/* Motion moment 2: the word behaves like a one-line counter (clipped). */}
-              <h1 className="relative h-8 overflow-hidden" aria-live="polite">
-                <AnimatePresence initial={false}>
-                  <motion.span
-                    key={view.word + view.tone}
-                    className={`state-word absolute inset-x-0 top-0 ${TONE_CLASS[view.tone]}`}
-                    initial={{ y: ST.wordShift, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1, transition: ST.wordIn }}
-                    exit={{ y: -ST.wordShift, opacity: 0, transition: ST.wordOut }}
-                  >
-                    {view.word}
-                  </motion.span>
-                </AnimatePresence>
-              </h1>
-              <div className="relative h-4">
-                <AnimatePresence initial={false}>
-                  <motion.p
-                    key={view.sub}
-                    className={`absolute inset-x-0 top-0 truncate ${view.subMono ? "label text-ink" : "text-secondary text-ink-muted"}`}
-                    title={view.sub}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1, transition: ST.sub }}
-                    exit={{ opacity: 0, transition: ST.sub }}
-                  >
-                    {view.sub}
-                  </motion.p>
-                </AnimatePresence>
-              </div>
+              <StateWord word={view.word} tone={view.tone} />
+              <SubLine text={view.sub} mono={view.subMono} />
             </div>
 
             {/* rows 5–6 · node */}
@@ -307,7 +284,59 @@ export function Popover() {
       {sheet && status && (
         <NodeSheet nodes={nodes} selectedId={status.selectedNodeId} activeId={status.activeNodeId} onClose={() => setSheet(false)} />
       )}
+      </MotionGate.Provider>
     </motion.div>
+  );
+}
+
+/** Motion moment 2: the state word behaves like a one-line counter (clipped). */
+function StateWord({ word, tone }: { word: string; tone: Tone }) {
+  const animate = useMotionOk();
+  return (
+    <h1 className="relative h-8 overflow-hidden" aria-live="polite">
+      {animate ? (
+        <AnimatePresence initial={false}>
+          <motion.span
+            key={word + tone}
+            className={`state-word absolute inset-x-0 top-0 ${TONE_CLASS[tone]}`}
+            initial={{ y: ST.wordShift, opacity: 0 }}
+            animate={{ y: 0, opacity: 1, transition: ST.wordIn }}
+            exit={{ y: -ST.wordShift, opacity: 0, transition: ST.wordOut }}
+          >
+            {word}
+          </motion.span>
+        </AnimatePresence>
+      ) : (
+        <span className={`state-word absolute inset-x-0 top-0 ${TONE_CLASS[tone]}`}>{word}</span>
+      )}
+    </h1>
+  );
+}
+
+function SubLine({ text, mono }: { text: string; mono: boolean }) {
+  const animate = useMotionOk();
+  const cls = `absolute inset-x-0 top-0 truncate ${mono ? "label text-ink" : "text-secondary text-ink-muted"}`;
+  return (
+    <div className="relative h-4">
+      {animate ? (
+        <AnimatePresence initial={false}>
+          <motion.p
+            key={text}
+            className={cls}
+            title={text}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1, transition: ST.sub }}
+            exit={{ opacity: 0, transition: ST.sub }}
+          >
+            {text}
+          </motion.p>
+        </AnimatePresence>
+      ) : (
+        <p className={cls} title={text}>
+          {text}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -356,7 +385,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex flex-col">
       <MetaLabel muted>{label}</MetaLabel>
-      <span className={`font-display text-[18px] leading-6 font-[650] tabular ${empty ? "text-ink-muted" : "text-ink"}`}>{value}</span>
+      <Rolling value={value} className={`font-display text-[18px] leading-6 font-[650] tabular ${empty ? "text-ink-muted" : "text-ink"}`} />
     </div>
   );
 }

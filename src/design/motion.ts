@@ -76,3 +76,14 @@ export const swapTimeline = {
   slideShift: 16,
   fade: { duration: duration.base, ease: ease.enter },
 } as const;
+
+/**
+ * Motion moment 4 — numbers (UI.md §5). Speeds, latency and session time roll
+ * digit by digit like an odometer (up when the value grows), with tabular
+ * figures so nothing shifts. Kept short: these change every second.
+ */
+export const rollTimeline = {
+  roll: { duration: 0.18, ease: ease.enter },
+  /** Fraction of the line height a digit travels (clipped). */
+  shift: "70%",
+} as const;

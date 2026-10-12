@@ -249,6 +249,27 @@ in ≈ 300 ms, no overshoot.
 | Last-event line (failover reason) | Cross-fade (200 ms) |
 | Sub-line (`On fallback · reason`) | Moment 2 cross-fade |
 
+Last-event line keeps its 200 ms cross-fade even when events arrive every few seconds
+(approved).
+
+### 4. Numbers (U2.4.4)
+
+Tokens: `rollTimeline`; component `src/ui/Rolling.tsx` (own implementation — no Rare UI
+code copied). Used for Up, Down, Latency and the session timer (bottom-right corner).
+
+- Characters are matched from the right, so units (`KB/s`, `MB/s`, `ms`) keep their place.
+- A changed digit rolls 70 % of the line height, clipped: up when the value grew, down
+  when it shrank (180 ms, enter). Other changed characters cross-fade.
+- Tabular figures + fixed stat columns: measured 0 frames of layout shift over 3 s of
+  live updates.
+
+**Motion gate** (`src/ui/motionGate.ts`): rolls, swaps, the state word and the sub-line only
+animate while the popover is shown and `document.visibilityState` is `visible`. Otherwise
+they render plain text. Reason: animations pause in hidden webviews, and exiting elements
+would pile up (measured: up to 10 stacked glyphs per digit slot within seconds, i.e.
+unbounded growth while the popover is hidden and connected). With the gate the DOM node
+count stays flat.
+
 ## 6. Dependencies
 
 | Package | Version | Why |
