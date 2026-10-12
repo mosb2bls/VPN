@@ -63,6 +63,8 @@ export const ERROR_MESSAGES: Record<ErrorCode, string> = {
   PROBE_TIMEOUT: "The connectivity test timed out.",
   PROBE_FAILED: "The connectivity test failed.",
   ALL_NODES_FAILED: "All configured nodes are failing. Traffic is blocked to prevent leaks.",
+  DIRECT_FALLBACK_ACTIVE:
+    "All nodes are failing. Direct fallback is on: traffic is going out directly and unprotected until a node recovers.",
   SYSTEM_PROXY_SET_FAILED: "The system proxy could not be set.",
   SYSTEM_PROXY_RESTORE_FAILED: "The previous system proxy settings could not be fully restored.",
   NETWORK_CHANGED: "The network changed. Reconnecting.",

@@ -497,6 +497,7 @@ export class MockEngine {
           since: nowIso(),
           reason,
           earliestReturnAt: earliest.toISOString().replace(/\.\d+Z$/, "Z"),
+          direct: false,
         },
       },
       reason,
@@ -1283,7 +1284,7 @@ export class MockEngine {
           state: "connected",
           activeNodeId: reality?.id ?? sel,
           failover: reality && sel
-            ? { primaryNodeId: sel, fallbackNodeId: reality.id, since: nowIso(), reason, earliestReturnAt: new Date(Date.now() + 600_000).toISOString().replace(/\.\d+Z$/, "Z") }
+            ? { primaryNodeId: sel, fallbackNodeId: reality.id, since: nowIso(), reason, earliestReturnAt: new Date(Date.now() + 600_000).toISOString().replace(/\.\d+Z$/, "Z"), direct: false }
             : null,
         });
         why = reason;
