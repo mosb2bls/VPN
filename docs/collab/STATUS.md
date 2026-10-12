@@ -12,8 +12,9 @@ Each agent edits only its own section.
   helper status / install / uninstall (macOS, admin prompt), live node switch, test_node,
   logs, launch recovery (restore or TUN re-attach), `--restore-networking`, windows + tray,
   rules status, automatic failover.
-- **Verified on real systems:** harness H-1 (HY2 + REALITY, exit GB); networksetup round
-  trip. **Not yet:** M-SYSPROXY, M-HELPER, M-TUN, M-IPV6, M-DNSLEAK, M-KILL, M-TUN-FORCEKILL.
+- **Verified on real systems (macOS arm64, 2026-10-12):** harness H-1 (HY2 + REALITY, exit
+  GB); networksetup round trip; owner-reported PASS for M-HELPER, M-TUN, M-IPV6, M-DNSLEAK,
+  M-KILL, M-TUN-FORCEKILL, M-SYSPROXY, M-FAILOVER, M-LIFECYCLE.
 - **Failover (B4):** implemented (engine unit-tested; live switching via selector). Real
   UDP-block test M-FAILOVER pending. Direct fallback when all nodes fail: not yet.
 - **Lifecycle (B5):** launch at login, auto-connect, close-to-tray implemented (M-LIFECYCLE
@@ -22,8 +23,9 @@ Each agent edits only its own section.
   helper's installed copy.
 - **Diagnostics:** `export_diagnostics` real (redacted zip in Downloads).
 - **Packaging (B6):** `npm run bundle:mac` / `bundle:win` (sing-box + helper as sidecars,
-  rule-sets as resources) — macOS bundle verified locally; CI workflow committed, not yet
-  pushed (owner decision on Actions minutes). README with Gatekeeper / SmartScreen steps.
+  rule-sets as resources) — macOS bundle verified locally. CI: tests + lint on every push to
+  main; installers on `v*` tags or manual run (owner decision). README with Gatekeeper /
+  SmartScreen steps.
 - **Not yet on Windows:** system proxy, helper / TUN / WFP kill switch (B3.2).
 - **Known issues:** `npm run tauri dev` fails if another Vite server holds port 1420; use
   `cargo run -p edge-app`. The helper binary must be built (`cargo build -p edge-helper`)

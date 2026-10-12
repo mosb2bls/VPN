@@ -1,5 +1,7 @@
-# CI: unit tests + lint on macOS (arm64) and Windows (x64); unsigned bundles
-# (.dmg / NSIS .exe) as artifacts on pushes to main and on tags.
+# CI: unit tests + lint on macOS (arm64) and Windows (x64) on every push to
+# main; unsigned bundles (.dmg / NSIS .exe) only for version tags (v*) or a
+# manual run — owner decision 2026-10-12 to limit billed Actions minutes
+# (private repo; macOS minutes count 10x).
 # No real credentials: the real-server harness is local-only and never runs here.
 name: ci
 
@@ -7,7 +9,7 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -47,7 +49,7 @@ jobs:
 
   bundle-macos:
     needs: test
-    if: github.event_name == 'push'
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -68,7 +70,7 @@ jobs:
 
   bundle-windows:
     needs: test
-    if: github.event_name == 'push'
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
