@@ -8,6 +8,7 @@ import { useApp } from "../state/store";
 import { DevPanel } from "./DevPanel";
 import { Popover } from "../popover/Popover";
 import { PopoverDebug } from "./PopoverDebug";
+import { Settings } from "../settings/Settings";
 import { SettingsDebug } from "./SettingsDebug";
 import { TokenSheet } from "./TokenSheet";
 import "./dev.css";
@@ -40,6 +41,7 @@ export function DevPage() {
 function Windows() {
   const [quit, setQuit] = useState(false);
   const [debug, setDebug] = useState(false);
+  const [settingsDebug, setSettingsDebug] = useState(false);
   // Simulated tray: any backend hide (Esc, Settings…) sends popoverHidden; the tray button shows it again.
   const [hidden, setHidden] = useState(false);
   useEffect(
@@ -110,9 +112,14 @@ function Windows() {
           </div>
         </figure>
         <figure>
-          <figcaption>SETTINGS · 760 × 560</figcaption>
+          <figcaption>
+            SETTINGS · 760 × 560 ·{" "}
+            <button className="dev-link" onClick={() => setSettingsDebug((d) => !d)}>
+              {settingsDebug ? "show designed" : "show debug view"}
+            </button>
+          </figcaption>
           <div className="dev-window" style={{ width: 760, height: 560 }}>
-            <SettingsDebug />
+            {settingsDebug ? <SettingsDebug /> : <Settings />}
           </div>
         </figure>
       </div>

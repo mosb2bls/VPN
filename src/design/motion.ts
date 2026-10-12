@@ -113,3 +113,19 @@ export const sheetTimeline = {
   /** Pause after the selection bar arrives before the sheet closes. */
   closeAfterSelectMs: 180,
 } as const;
+
+/** Motion moment 9 — hold-to-confirm delete: a bar fills along the button. */
+export const holdTimeline = {
+  holdMs: 900,
+  fill: { duration: 0.9, ease: "linear" as const },
+  release: { duration: duration.fast, ease: ease.exit },
+} as const;
+
+/** Motion moment 7 — settings navigation: rail block slides; content cross-fades with a small shift. */
+export const navTimeline = {
+  rail: { duration: duration.base, ease: ease.enter },
+  contentIn: { duration: duration.base, ease: ease.enter },
+  contentOut: { duration: duration.fast, ease: ease.exit },
+  /** px the content shifts up as it changes. */
+  shift: 6,
+} as const;

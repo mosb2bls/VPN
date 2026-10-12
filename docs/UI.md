@@ -293,6 +293,48 @@ Measured: one-option slide settles ≈ 190 ms after the backend confirms, no ove
 
 With the motion gate off (hidden page) the sheet opens and closes instantly.
 
+### 7. Settings navigation (U3.1)
+
+`navTimeline`. Rail ink block slides between sections (shared layout, 200 ms enter);
+content: old section fades out (120 ms, exit), new one fades in with a 6 px rise (200 ms).
+Measured ≈ 290 ms end to end.
+
+### 9. Hold-to-confirm delete (U3.1, built early for the Nodes list)
+
+`holdTimeline`, `src/ui/HoldButton.tsx`. Hold 900 ms (pointer, or Space / Enter held): a
+3 px vermilion bar fills along the bottom edge (linear), label becomes "Keep holding…"; the
+label stays ink on paper (D14). Release early → bar runs back (120 ms). Confirmation fires
+on a plain timer, not an animation callback. Measured: bar ≈ 33 % at 300 ms; a short hold
+deletes nothing.
+
+## 5a. Settings window (U3.1 — proposed)
+
+- Paper with grain, no grid, no frame (the window has native decorations).
+- Rail 184 px: `EDGECLIENT`, sections `01 … 09` (mono labels, ink block on the current one),
+  live status at the bottom (coloured state word as in the popover + node).
+- Content column max 620 px, 40 px side padding: mono index (`01 / NODES`), Archivo 850
+  title at 26 px, then the section.
+- Sections not designed yet show a "Design pending" note and the working debug controls.
+
+### 01 / Nodes
+
+- Toolbar: PASTE LINKS · FROM CLIPBOARD · QR IMAGE · ADD MANUALLY (outline buttons).
+- Paste panel: mono textarea + the §2.1.1 rules as help text; result note lists added
+  nodes and every rejected line (`LINE n · scheme`, message, parameter name).
+- QR panel: dashed drop zone (Tauri drag-drop gives a path; browser drop / file picker /
+  Cmd-V paste give bytes), PNG/JPEG only, "Decoding QR code…" busy state, never uploaded.
+- Manual form: HY2 / REALITY switch (add only); secrets never shown — masked value with
+  Change / Keep current (and Remove for the optional obfs password); certificate pin and
+  spiderX hidden (always null); insecure checkbox with a warning; per-field errors from
+  `VALIDATION_FAILED`; keychain prompt hint.
+- List (connection order): index, cobalt bar on the selected node, name + Active/Selected,
+  mono `PROTOCOL · server:port`, warnings (credentials missing, insecure), last test
+  (`48 MS · GB` / Failed / Untested / Not available), actions ↑ ↓ TEST EDIT DELETE (hold).
+- Editing the active node while connected → "Changes to the active node apply after
+  reconnecting" + RECONNECT NOW (= disconnect, then connect). Deleting the active node →
+  "This node is carrying traffic" + the BUSY message.
+- Empty: "No nodes yet" + the import rules.
+
 ## 6. Dependencies
 
 | Package | Version | Why |

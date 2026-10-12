@@ -171,7 +171,7 @@ function Nodes() {
   );
 }
 
-function Connection() {
+export function Connection() {
   const status = useApp((s) => s.status);
   const { run, last, busy } = useRun();
   if (!status) return null;
@@ -194,7 +194,7 @@ function Connection() {
   );
 }
 
-function JsonSettings<T>({ label, get, put }: { label: string; get: () => Promise<{ status: "ok"; data: T } | { status: "error"; error: import("../api/bindings").AppError }>; put: (v: T) => Promise<{ status: "ok"; data: T } | { status: "error"; error: import("../api/bindings").AppError }> }) {
+export function JsonSettings<T>({ label, get, put }: { label: string; get: () => Promise<{ status: "ok"; data: T } | { status: "error"; error: import("../api/bindings").AppError }>; put: (v: T) => Promise<{ status: "ok"; data: T } | { status: "error"; error: import("../api/bindings").AppError }> }) {
   const [text, setText] = useState("");
   const { run, last, busy } = useRun();
   useEffect(() => {
@@ -222,7 +222,7 @@ function JsonSettings<T>({ label, get, put }: { label: string; get: () => Promis
   );
 }
 
-function Rules() {
+export function Rules() {
   const [rules, setRules] = useState<RulesStatus | null>(null);
   const { run, last, busy } = useRun();
   useEffect(() => {
@@ -238,7 +238,7 @@ function Rules() {
   );
 }
 
-function Helper() {
+export function Helper() {
   const helper = useApp((s) => s.helper) as HelperStatus | null;
   const { run, last, busy } = useRun();
   return (
@@ -254,7 +254,7 @@ function Helper() {
   );
 }
 
-function Logs() {
+export function Logs() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [level, setLevel] = useState<LogLevel>("info");
   const activity = useApp((s) => s.activity);
@@ -320,7 +320,7 @@ function RestoreItems() {
   );
 }
 
-function About() {
+export function About() {
   const [info, setInfo] = useState<AppInfo | null>(null);
   useEffect(() => {
     void commands.getAppInfo().then((r) => r.status === "ok" && setInfo(r.data));

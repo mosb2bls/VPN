@@ -3,7 +3,7 @@ import ReactDOM from "react-dom/client";
 import { windowLabel } from "./api/client";
 import { DevPage } from "./dev/DevPage";
 import { Popover } from "./popover/Popover";
-import { SettingsDebug } from "./dev/SettingsDebug";
+import { Settings } from "./settings/Settings";
 import { startStore } from "./state/store";
 import "./design/tokens.css";
 import "./dev/dev.css";
@@ -12,7 +12,7 @@ import "./dev/dev.css";
 // plain browser, show the dev page with both side by side.
 const label = windowLabel();
 const root =
-  label === "popover" ? <Popover /> : label === "settings" ? <SettingsDebug /> : <DevPage />;
+  label === "popover" ? <Popover /> : label === "settings" ? <Settings /> : <DevPage />;
 
 void startStore();
 
