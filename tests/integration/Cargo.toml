@@ -1,0 +1,17 @@
+[package]
+name = "edge-harness"
+description = "Local-only real-server test harness (prints redacted results only)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "edge-harness"
+path = "src/main.rs"
+
+[dependencies]
+edge-core.workspace = true
+edge-app = { path = "../../src-tauri" }
+tempfile = "3"
+serde_json.workspace = true

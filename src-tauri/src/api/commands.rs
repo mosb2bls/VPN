@@ -48,15 +48,43 @@ fn notify_status(app: &AppHandle, reason: Option<&str>) {
 pub mod ops {
     use super::*;
 
-    pub fn select_node(app: &AppHandle, id: String) -> ApiResult<Status> {
-        let status = with_state(app, |st| {
+    pub async fn select_node(app: &AppHandle, id: String) -> ApiResult<Status> {
+        with_state(app, |st| {
             st.nodes.select(&id)?;
-            st.status.selected_node_id = Some(id);
-            Ok(st.status.clone())
+            st.status.selected_node_id = Some(id.clone());
+            Ok(())
         })?;
         notify_nodes(app);
         notify_status(app, None);
-        Ok(status)
+        crate::net::session::select_live(app, &id).await?;
+        with_state(app, |st| Ok(st.status.clone()))
+    }
+
+    pub async fn set_capture_mode_live(app: &AppHandle, mode: CaptureMode) -> ApiResult<Status> {
+        let changed = with_state(app, |st| Ok(st.status.capture_mode != mode))?;
+        set_capture_mode(app, mode)?;
+        if changed {
+            crate::net::session::after_mode_change(app, true).await?;
+        }
+        with_state(app, |st| Ok(st.status.clone()))
+    }
+
+    pub async fn set_routing_mode_live(app: &AppHandle, mode: RoutingMode) -> ApiResult<Status> {
+        let changed = with_state(app, |st| Ok(st.status.routing_mode != mode))?;
+        set_routing_mode(app, mode)?;
+        if changed {
+            crate::net::session::after_mode_change(app, false).await?;
+        }
+        with_state(app, |st| Ok(st.status.clone()))
+    }
+
+    pub async fn set_dns_profile_live(app: &AppHandle, profile: DnsProfile) -> ApiResult<Status> {
+        let changed = with_state(app, |st| Ok(st.status.dns_profile != profile))?;
+        set_dns_profile(app, profile)?;
+        if changed {
+            crate::net::session::after_mode_change(app, false).await?;
+        }
+        with_state(app, |st| Ok(st.status.clone()))
     }
 
     pub fn set_capture_mode(app: &AppHandle, mode: CaptureMode) -> ApiResult<Status> {
@@ -89,22 +117,22 @@ pub mod ops {
         Ok(status)
     }
 
-    pub async fn connect(_app: &AppHandle) -> ApiResult<Status> {
-        Err(AppError::not_implemented("connect"))
+    pub async fn connect(app: &AppHandle) -> ApiResult<Status> {
+        crate::net::session::connect(app).await
     }
 
     pub async fn disconnect(app: &AppHandle) -> ApiResult<Status> {
-        // Nothing can be connected in B1, so disconnect is a no-op that reports status.
-        with_state(app, |st| Ok(st.status.clone()))
+        crate::net::session::disconnect(app).await
     }
 
-    pub async fn restore_networking(_app: &AppHandle) -> ApiResult<RestoreReport> {
-        Err(AppError::not_implemented("restore_networking"))
+    pub async fn restore_networking(app: &AppHandle) -> ApiResult<RestoreReport> {
+        crate::net::session::restore_networking(app).await
     }
 
-    /// Disconnect, restore networking, then exit. In B1 there is no OS state
-    /// to restore, so this exits immediately.
+    /// Disconnect and restore networking, then exit (even if the restore is
+    /// incomplete: the journal is kept and the next launch retries).
     pub async fn quit(app: &AppHandle) -> ApiResult<()> {
+        let _ = crate::net::session::teardown(app, edge_core::restore::RestoreTrigger::Quit, ConnectionState::Disconnected).await;
         app.exit(0);
         Ok(())
     }
@@ -228,8 +256,10 @@ pub async fn update_node(app: AppHandle, id: String, form: NodeForm) -> ApiResul
 #[tauri::command]
 #[specta::specta]
 pub async fn delete_node(app: AppHandle, id: String) -> ApiResult<()> {
+    if crate::net::session::is_active_node(&app, &id) {
+        return Err(AppError::new(ErrorCode::Busy).with_detail("disconnect before deleting the active node"));
+    }
     let selection_changed = with_state(&app, |st| {
-        // TODO(B2.4): refuse with BUSY while this node carries traffic.
         st.nodes.delete(&id)?;
         Ok(sync_selection(st))
     })?;
@@ -254,15 +284,67 @@ pub async fn reorder_nodes(app: AppHandle, ids: Vec<String>) -> ApiResult<Vec<No
 #[tauri::command]
 #[specta::specta]
 pub async fn select_node(app: AppHandle, id: String) -> ApiResult<Status> {
-    ops::select_node(&app, id)
+    ops::select_node(&app, id).await
 }
 
 /// Real connectivity test through the node (not a TCP ping).
 #[tauri::command]
 #[specta::specta]
-pub async fn test_node(id: String) -> ApiResult<NodeTestResult> {
-    let _ = id;
-    Err(AppError::not_implemented("test_node"))
+pub async fn test_node(app: AppHandle, id: String) -> ApiResult<NodeTestResult> {
+    use std::collections::HashSet;
+    use std::sync::OnceLock;
+    static RUNNING: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    static SLOTS: OnceLock<tokio::sync::Semaphore> = OnceLock::new();
+    let running = RUNNING.get_or_init(Default::default);
+    if !running.lock().unwrap_or_else(|p| p.into_inner()).insert(id.clone()) {
+        return Err(AppError::new(ErrorCode::Busy));
+    }
+    struct Done<'a>(&'a Mutex<HashSet<String>>, String);
+    impl Drop for Done<'_> {
+        fn drop(&mut self) {
+            self.0.lock().unwrap_or_else(|p| p.into_inner()).remove(&self.1);
+        }
+    }
+    let _done = Done(running, id.clone());
+    let _slot = SLOTS.get_or_init(|| tokio::sync::Semaphore::new(3)).acquire().await.map_err(|_| AppError::new(ErrorCode::Internal))?;
+
+    let (cfg, rules, dns, dir, targets, timeout_ms) = with_state(&app, |st| {
+        let cfg = st.nodes.config(&id)?;
+        let r = st.rules.clone()?;
+        let p = &st.prefs.prefs;
+        Ok((
+            cfg,
+            edge_core::singbox::RuleSets { geosite_cn: r.geosite_cn, geoip_cn: r.geoip_cn },
+            match p.dns_profile {
+                DnsProfile::Mainland => edge_core::singbox::DnsProfile::Mainland,
+                DnsProfile::Overseas => edge_core::singbox::DnsProfile::Overseas,
+            },
+            st.data_dir.clone(),
+            p.failover.probe_targets.clone(),
+            p.failover.probe_timeout_secs * 1000,
+        ))
+    })?;
+    let bin = crate::core_bin::locate_verified()?;
+    let report = tauri::async_runtime::spawn_blocking(move || {
+        let work = dir.join("run").join(format!("probe-{}", uuid::Uuid::new_v4().simple()));
+        let targets: Vec<&str> = targets.iter().map(String::as_str).collect();
+        let r = crate::net::probe::probe_node(&bin, &cfg, rules, dns, &work, &targets, timeout_ms);
+        let _ = std::fs::remove_dir_all(&work);
+        r
+    })
+    .await
+    .map_err(|_| AppError::new(ErrorCode::Internal).with_detail("test task failed"))??;
+    let result = NodeTestResult {
+        node_id: id.clone(),
+        ok: report.ok(),
+        latency_ms: report.median_latency(),
+        exit_country: report.exit_country.clone(),
+        error: report.error.clone(),
+        tested_at: edge_core::clock::now_rfc3339(),
+    };
+    with_state(&app, |st| st.nodes.set_last_test(&id, result.clone()))?;
+    notify_nodes(&app);
+    Ok(result)
 }
 
 // ---------------------------------------------------------------------------
@@ -290,19 +372,19 @@ pub async fn get_status(app: AppHandle) -> ApiResult<Status> {
 #[tauri::command]
 #[specta::specta]
 pub async fn set_capture_mode(app: AppHandle, mode: CaptureMode) -> ApiResult<Status> {
-    ops::set_capture_mode(&app, mode)
+    ops::set_capture_mode_live(&app, mode).await
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn set_routing_mode(app: AppHandle, mode: RoutingMode) -> ApiResult<Status> {
-    ops::set_routing_mode(&app, mode)
+    ops::set_routing_mode_live(&app, mode).await
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn set_dns_profile(app: AppHandle, profile: DnsProfile) -> ApiResult<Status> {
-    ops::set_dns_profile(&app, profile)
+    ops::set_dns_profile_live(&app, profile).await
 }
 
 // ---------------------------------------------------------------------------
@@ -453,8 +535,7 @@ pub async fn set_settings(app: AppHandle, settings: AppSettings) -> ApiResult<Ap
 #[tauri::command]
 #[specta::specta]
 pub async fn get_logs(limit: u32, min_level: Option<LogLevel>) -> ApiResult<Vec<LogEntry>> {
-    let _ = (limit, min_level);
-    Ok(vec![])
+    Ok(crate::net::logbuf::global().recent(limit, min_level))
 }
 
 #[tauri::command]

@@ -12,12 +12,19 @@ pub const APP_NAME: &str = "EdgeClient";
 /// Lowercase slug for file names, keychain service names, socket/pipe names.
 pub const APP_SLUG: &str = "edgeclient";
 
+/// Bundle identifier (must equal `identifier` in `src-tauri/tauri.conf.json`).
+/// Also the name of the app's config/data folder and keychain service.
+pub const APP_IDENTIFIER: &str = "io.github.mosb2bls.edgeclient";
+
+pub mod clock;
 pub mod error_code;
 pub mod link;
 pub mod qr;
+pub mod redact;
 pub mod restore;
 pub mod secret;
 pub mod singbox;
+pub mod sysproxy;
 pub mod validate;
 
 pub use error_code::ErrorCode;
@@ -37,6 +44,7 @@ mod tests {
         let conf: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
         assert_eq!(conf["productName"], APP_NAME);
+        assert_eq!(conf["identifier"], APP_IDENTIFIER);
         for w in conf["app"]["windows"].as_array().unwrap() {
             assert!(w["title"].as_str().unwrap().starts_with(APP_NAME), "window title {w}");
         }

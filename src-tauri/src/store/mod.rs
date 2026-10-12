@@ -376,6 +376,14 @@ impl NodeStore {
         self.commit(file, None)
     }
 
+    /// Record a test result on the node (persisted).
+    pub fn set_last_test(&mut self, id: &str, result: NodeTestResult) -> ApiResult<()> {
+        let mut file = self.file.clone();
+        let n = file.nodes.iter_mut().find(|n| n.id == id).ok_or_else(|| AppError::new(ErrorCode::NodeNotFound))?;
+        n.last_test = Some(result);
+        self.commit(file, None)
+    }
+
     /// Full connection config (with secrets) for the core.
     pub fn config(&self, id: &str) -> ApiResult<NodeConfig> {
         let n = self.find(id).ok_or_else(|| AppError::new(ErrorCode::NodeNotFound))?;

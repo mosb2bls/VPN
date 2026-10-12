@@ -2,9 +2,6 @@
 //! the binary whose SHA-256 matches the hash embedded at build time (see
 //! build.rs / scripts/sing-box.lock.json); there is no user-configurable path.
 
-// First runtime caller is `connect` (B2.5); until then only tests use this.
-#![cfg_attr(not(test), allow(dead_code))]
-
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};

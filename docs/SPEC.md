@@ -1,6 +1,6 @@
 # EdgeClient — Backend ↔ UI Interface Specification
 
-**Spec version:** 1.3.0
+**Spec version:** 1.3.1
 **Status:** approved; includes REQ-1 to REQ-4 (Phase B1). "1.0.0" marks a breaking change, not feature completeness — most commands are still stubs.
 **Generated bindings:** `src/api/bindings.ts` (from `src-tauri/src/api/*`, via tauri-specta `=2.0.0-rc.25`)
 
@@ -12,6 +12,7 @@ the disagreement is a backend bug — file a REQ.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.3.1 | 2026-10-12 | **Behaviour (B2.7, macOS):** `connect` / `disconnect` / `restore_networking` / `quit_app` / mode setters work in **system proxy mode** (journal, exact restore, per-item reports, launch recovery, `--restore-networking`); `test_node` and `get_logs` are real; `delete_node` of the active node → `BUSY`. TUN still → `HELPER_NOT_INSTALLED`; Windows system proxy not yet (→ `SYSTEM_PROXY_SET_FAILED`). See ADR-0004. No type changes. |
 | 1.3.0 | 2026-10-12 | **Additive (B2.6):** error code `RULES_MISSING`. **Behaviour:** `get_rules_status` is real (bundled, pinned `geosite-cn` / `geoip-cn` rule-sets; `version` = manifest version, `updatedAt` = newest source commit time). Rule *updates* are still `NOT_IMPLEMENTED`. |
 | 1.2.1 | 2026-10-12 | **Clarification / tightened import (B2.5):** VLESS `spx` (spiderX) is now **rejected** if non-empty and `VlessForm.spiderX` must be null — sing-box 1.14 has no spiderX option (previously accepted and would have been ignored). §6 now names the exact resolvers and routing order (ADR-0003). No type changes. |
 | 1.2.0 | 2026-10-12 | **Additive (owner-approved):** event `popoverHidden` (payload `null`, to `popover` only), emitted every time the backend hides the popover, whatever the cause (§2.8). |
@@ -70,8 +71,8 @@ clarification/wording. Each interface change updates this file, the changelog, a
 | `update_node` | `id: string, form: NodeForm` | `Node` | `NODE_NOT_FOUND`, `VALIDATION_FAILED`, `NODE_DUPLICATE`, `KEYCHAIN_*`, `SETTINGS_SAVE_FAILED` | no | **real** |
 | `delete_node` | `id: string` | `null` | `NODE_NOT_FOUND`, `BUSY` (node is active), `SETTINGS_SAVE_FAILED` | no | **real** |
 | `reorder_nodes` | `ids: string[]` (all IDs, new order) | `Node[]` | `REORDER_MISMATCH`, `SETTINGS_SAVE_FAILED` | no | **real** |
-| `select_node` | `id: string` | `Status` | `NODE_NOT_FOUND`, `SETTINGS_SAVE_FAILED` | no | **real** (selection; live switch in B2.4) |
-| `test_node` | `id: string` | `NodeTestResult` | `NODE_NOT_FOUND`, `CORE_*`, `BUSY` | no | stub |
+| `select_node` | `id: string` | `Status` | `NODE_NOT_FOUND`, `SETTINGS_SAVE_FAILED`, `CORE_API_UNREACHABLE` | no | **real** (live switch while connected) |
+| `test_node` | `id: string` | `NodeTestResult` | `NODE_NOT_FOUND`, `SECRET_MISSING`, `RULES_MISSING`, `CORE_*`, `BUSY` | no | **real** |
 
 - **Import** accepts `hy2://`, `hysteria2://`, `vless://`, one link per line; blank lines
   and surrounding whitespace are ignored. Valid links are added even if other lines fail;
@@ -156,13 +157,18 @@ must be `null` in this version (non-null → `VALIDATION_FAILED`, field `pinSha2
 
 | Command | Params | Returns | Errors | Elevation | B1 |
 |---|---|---|---|---|---|
-| `connect` | — | `Status` | `NO_NODES`, `NO_NODE_SELECTED`, `CORE_*`, `SYSTEM_PROXY_SET_FAILED`, `HELPER_NOT_INSTALLED`, `HELPER_*`, `TUN_START_FAILED`, `PORT_IN_USE`, `DNS_BOOTSTRAP_FAILED`, `BUSY` | TUN: no (helper already installed) | stub |
-| `disconnect` | — | `Status` | `RESTORE_INCOMPLETE` (with `error.restoreReport`, §2.7) | no | returns status |
+| `connect` | — | `Status` | `NO_NODES`, `NO_NODE_SELECTED`, `SECRET_MISSING`, `RULES_MISSING`, `CORE_*`, `SYSTEM_PROXY_SET_FAILED`, `HELPER_NOT_INSTALLED`, `HELPER_*`, `TUN_START_FAILED`, `PORT_IN_USE`, `DNS_BOOTSTRAP_FAILED`, `BUSY` | TUN: no (helper already installed) | **real in system proxy mode (macOS)**; TUN → `HELPER_NOT_INSTALLED` |
+| `disconnect` | — | `Status` | `RESTORE_INCOMPLETE` (with `error.restoreReport`, §2.7), `BUSY` | no | **real** (system proxy, macOS) |
 | `get_status` | — | `Status` | — | no | placeholder |
 | `set_capture_mode` | `mode: CaptureMode` | `Status` | as `connect` when connected; `SETTINGS_SAVE_FAILED` | no | **persisted** |
 | `set_routing_mode` | `mode: RoutingMode` | `Status` | as `connect` when connected; `SETTINGS_SAVE_FAILED` | no | **persisted** |
 | `set_dns_profile` | `profile: DnsProfile` | `Status` | as `connect` when connected; `SETTINGS_SAVE_FAILED` | no | **persisted** |
 
+- **System proxy mode (macOS, B2.7):** sets the HTTP, HTTPS and SOCKS proxy of every
+  enabled network service to `127.0.0.1:<local port>` (previous settings journaled first
+  and restored exactly; PAC / auto-discovery turned off while connected if they were on;
+  services with an authenticated proxy are refused → `SYSTEM_PROXY_SET_FAILED`). Node edits
+  while connected take effect on the next connect or mode change. Details: ADR-0004.
 - `connect` returns once the state is `connected` (or `direct`), or fails. Progress is
   visible through `statusChanged` events (`connecting` first).
 - **Preconditions** (REQ-3): `connect` checks these **before** leaving `disconnected`; if
@@ -227,11 +233,11 @@ attempt, scheduled or manual, is also emitted as `rulesUpdated`.
 |---|---|---|---|---|---|
 | `get_settings` | — | `AppSettings` | — | no | **real** |
 | `set_settings` | `settings: AppSettings` | `AppSettings` | `VALIDATION_FAILED` (`rulesUpdateIntervalHours` 1–168), `LAUNCH_AT_LOGIN_FAILED`, `SETTINGS_SAVE_FAILED` | no | **persisted**, validated (launch-at-login / auto-connect / close-to-tray take effect in B5) |
-| `get_logs` | `limit: number, minLevel: LogLevel \| null` | `LogEntry[]` (oldest first) | — | no | returns `[]` |
+| `get_logs` | `limit: number, minLevel: LogLevel \| null` | `LogEntry[]` (oldest first) | — | no | **real** |
 | `export_diagnostics` | — | `DiagnosticsExport` | `DIAGNOSTICS_EXPORT_FAILED` | no | stub |
-| `restore_networking` | — | `RestoreReport` (only when fully restored) | `RESTORE_INCOMPLETE` (with `error.restoreReport`, §2.7) | only if helper is not installed but a TUN/firewall journal exists | stub |
+| `restore_networking` | — | `RestoreReport` (only when fully restored) | `RESTORE_INCOMPLETE` (with `error.restoreReport`, §2.7), `BUSY` | only if helper is not installed but a TUN/firewall journal exists | **real** (system proxy, macOS) |
 | `get_app_info` | — | `AppInfo` | — | no | **real** |
-| `quit_app` | — | `null` (process exits) | — (an incomplete restore is persisted, §2.7; the app still quits) | no | exits immediately |
+| `quit_app` | — | `null` (process exits) | — (an incomplete restore is persisted, §2.7; the app still quits) | no | **real** |
 
 - `get_logs` (REQ-3): polling every ~2 s while a logs view is visible is fine (the
   backend keeps a 2000-entry in-memory ring buffer; `limit` is capped at 1000). There is
@@ -613,10 +619,13 @@ Things the UI must explain to the user (wording is the UI's choice; substance is
 13. **Secrets** are shown masked only; there is no "reveal" command. To change a secret,
     the user re-enters it.
 14. **Real data (B2.2):** the node list starts **empty** and is persisted; there are no
-    placeholder nodes any more. Show an empty state with import actions. Connect, test, helper,
-    rules update, diagnostics and restore still return `NOT_IMPLEMENTED`.
+    placeholder nodes any more. Show an empty state with import actions. As of B2.7, connect /
+    disconnect / restore / test work in system proxy mode on macOS; helper, rule updates and
+    diagnostics still return `NOT_IMPLEMENTED`.
 15. **`secretMissing` nodes:** show a clear "credentials missing — edit to re-enter"
     state; disable Connect/Test for them.
-16. **Keychain prompt (macOS):** the first save, and the first launch after the app
+16. **Editing the active node while connected** takes effect after reconnecting; say so
+    after a save (or offer "Reconnect now").
+17. **Keychain prompt (macOS):** the first save, and the first launch after the app
     binary changes, may show a macOS "allow access to keychain" prompt (expected for
     unsigned builds). Choosing "Always Allow" avoids repeats until the next build.

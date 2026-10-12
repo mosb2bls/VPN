@@ -1,6 +1,6 @@
 //! Application state held behind `api::commands::AppState`.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::api::error::AppError;
 use crate::api::types::{ConnectionState, Status};
@@ -15,6 +15,10 @@ pub struct AppData {
     pub status: Status,
     /// Verified active rule-sets, or why they are unavailable.
     pub rules: Result<crate::rules::ActiveRules, AppError>,
+    /// App data dir (journal, logs, run dir, active rules).
+    pub data_dir: PathBuf,
+    /// Running connection, if any.
+    pub session: Option<crate::net::session::Session>,
 }
 
 impl AppData {
@@ -41,6 +45,6 @@ impl AppData {
             last_restore: None,
         };
         let rules = Err(AppError::new(crate::api::error::ErrorCode::RulesMissing).with_detail("not loaded yet"));
-        (Self { nodes, prefs, status, rules }, warnings)
+        (Self { nodes, prefs, status, rules, data_dir: dir.to_path_buf(), session: None }, warnings)
     }
 }

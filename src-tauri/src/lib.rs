@@ -1,6 +1,7 @@
 pub mod api;
-mod core_bin;
-mod rules;
+pub mod core_bin;
+pub mod net;
+pub mod rules;
 mod shell;
 mod state;
 mod store;
@@ -12,12 +13,14 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .manage(net::session::OpLock(tokio::sync::Mutex::new(())))
         .manage(shell::ShellState::default())
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             load_state(app)?;
             builder.mount_events(app);
             shell::setup(app)?;
+            net::session::recover_at_launch(app.handle());
             Ok(())
         })
         .run(tauri::generate_context!())
@@ -35,7 +38,10 @@ fn load_state(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             Ok(k) => Box::new(k),
             Err(e) => Box::new(store::secrets::Unavailable(e)),
         };
+    let data_dir = app.path().app_data_dir()?;
+    net::logbuf::global().set_file_dir(&data_dir.join("logs"));
     let (mut data, mut warnings) = state::AppData::load(&dir, secrets);
+    data.data_dir = data_dir;
     let active_rules = app.path().app_data_dir()?.join("rules");
     data.rules = rules::ensure_active(
         &rules::embedded_manifest(),
@@ -47,9 +53,16 @@ fn load_state(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     }
     app.manage(api::commands::AppState::new(data));
     for w in warnings {
-        // TODO(B2 logging): also record in the redacted log.
-        eprintln!("startup warning: {:?}: {}", w.code, w.detail.as_deref().unwrap_or(""));
+        net::logbuf::app(
+            api::types::LogLevel::Warn,
+            format!("startup: {:?}: {}", w.code, w.detail.as_deref().unwrap_or("")),
+        );
         let _ = tauri_specta::Event::emit(&api::events::ErrorRaised { error: w }, app.handle());
     }
     Ok(())
+}
+
+/// `--restore-networking` entry point (no UI). Returns the process exit code.
+pub fn restore_networking_cli() -> i32 {
+    net::session::restore_cli()
 }
