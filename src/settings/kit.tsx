@@ -1,7 +1,7 @@
 // Small building blocks for the settings window: buttons, fields, notes.
 // Ink on paper; colour only for state (UI.md §3). Field errors come from the
 // backend's VALIDATION_FAILED `fields[]`, keyed by the form field name.
-import { forwardRef, useId, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
+import { forwardRef, useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
 import type { AppError, FieldError } from "../api/bindings";
 
 type Variant = "solid" | "outline" | "ghost";
@@ -140,5 +140,73 @@ export function ErrorNote({ error, title }: { error: AppError; title?: string })
         </details>
       )}
     </Note>
+  );
+}
+
+/** Accessible on/off switch: ink track when on. */
+export function Switch({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`relative h-5 w-9 shrink-0 border border-ink transition-colors duration-base ease-enter disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cobalt ${
+        checked ? "bg-ink" : "bg-paper-raised"
+      }`}
+    >
+      <span
+        aria-hidden
+        className={`absolute top-[2px] left-[2px] size-[14px] transition-transform duration-base ease-enter ${checked ? "translate-x-4 bg-paper" : "bg-ink"}`}
+      />
+    </button>
+  );
+}
+
+/** One setting: title + explanation on the left, control on the right. */
+export function SettingRow({ title, children, control, tone }: { title: ReactNode; children?: ReactNode; control?: ReactNode; tone?: "warn" }) {
+  return (
+    <div className="flex items-start justify-between gap-6 border-b border-line py-4 last:border-b-0">
+      <div className="flex min-w-0 flex-col gap-1">
+        <span className={`text-body font-medium ${tone === "warn" ? "text-mustard-text" : ""}`}>{title}</span>
+        {children && <div className="text-secondary text-ink-muted">{children}</div>}
+      </div>
+      {control && <div className="shrink-0 pt-0.5">{control}</div>}
+    </div>
+  );
+}
+
+const UNITS = { s: 1, min: 60, h: 3600 } as const;
+type Unit = keyof typeof UNITS;
+const bestUnit = (secs: number): Unit => (secs % 3600 === 0 && secs >= 3600 ? "h" : secs % 60 === 0 && secs >= 60 ? "min" : "s");
+
+/** Seconds value edited as number + unit (s / min / h). */
+export function DurationInput({ id, value, onChange, invalid, units = ["s", "min", "h"] }: { id?: string; value: number; onChange: (secs: number) => void; invalid?: boolean; units?: Unit[] }) {
+  const [unit, setUnit] = useState<Unit>(() => (units.includes(bestUnit(value)) ? bestUnit(value) : units[0]));
+  const shown = value / UNITS[unit];
+  return (
+    <div className="flex">
+      <TextInput
+        id={id}
+        mono
+        inputMode="numeric"
+        className="w-20"
+        invalid={invalid}
+        value={Number.isFinite(shown) ? String(+shown.toFixed(2)) : ""}
+        onChange={(e) => onChange(Math.round(Number(e.target.value) * UNITS[unit]))}
+      />
+      <select
+        aria-label="Unit"
+        value={unit}
+        onChange={(e) => setUnit(e.target.value as Unit)}
+        className="h-8 border border-l-0 border-line bg-paper-raised px-1 font-mono text-[12px] focus-visible:outline-2 focus-visible:outline-cobalt"
+      >
+        {units.map((u) => (
+          <option key={u}>{u}</option>
+        ))}
+      </select>
+    </div>
   );
 }

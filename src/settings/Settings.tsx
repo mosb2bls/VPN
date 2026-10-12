@@ -2,19 +2,25 @@
 // with the nine sections; content column on the right. Same paper and ink as
 // the popover, no grid. Motion moment 7: the rail's ink block slides to the
 // chosen section and the content cross-fades with a small upward shift.
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { commands, on } from "../api/client";
-import type { AppSettings, FailoverSettings, SafetySettings, SettingsSection } from "../api/bindings";
+import { on } from "../api/client";
+import type { SettingsSection } from "../api/bindings";
 import { navTimeline as N } from "../design/motion";
-import { About, Connection, Helper, JsonSettings, Logs, Rules } from "../dev/SettingsDebug";
 import { protocolBadge } from "../lib/format";
 import { derivePopoverView, TONE_CLASS } from "../popover/view";
 import { useApp } from "../state/store";
 import { useMotionOk } from "../ui/motionGate";
-import { Note, SectionHeader } from "./kit";
+import { SettingsNav } from "./nav";
+import { AboutSection } from "./sections/About";
+import { ConnectionSection } from "./sections/Connection";
+import { FailoverSection } from "./sections/Failover";
+import { HelperSection } from "./sections/Helper";
+import { LogsSection } from "./sections/Logs";
 import { NodesSection } from "./sections/Nodes";
-import "../dev/dev.css"; // debug panels for sections not designed yet
+import { RulesSection } from "./sections/Rules";
+import { SafetySection } from "./sections/Safety";
+import { StartupSection } from "./sections/Startup";
 
 const SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: "nodes", label: "Nodes" },
@@ -39,8 +45,6 @@ export function Settings() {
     void on("settingsSectionRequested", (p) => setSection(p.section)).then((u) => (off = u));
     return () => off?.();
   }, []);
-
-  const idx = SECTIONS.findIndex((s) => s.id === section);
 
   return (
     <div className="paper-grain grid h-full min-h-0 grid-cols-[184px_1fr] text-ink">
@@ -88,7 +92,9 @@ export function Settings() {
             animate={{ opacity: 1, y: 0, transition: N.contentIn }}
             exit={animate ? { opacity: 0, transition: N.contentOut } : undefined}
           >
-            <Section id={section} index={`${num(idx)} / ${SECTIONS[idx].label}`} />
+            <SettingsNav.Provider value={setSection}>
+              <Section id={section} />
+            </SettingsNav.Provider>
           </motion.div>
         </AnimatePresence>
       </main>
@@ -119,40 +125,25 @@ function RailStatus() {
   );
 }
 
-function Section({ id, index }: { id: SettingsSection; index: string }) {
-  if (id === "nodes") return <NodesSection />;
-  const title = index.split(" / ")[1];
-  return (
-    <div className="flex flex-col gap-5">
-      <SectionHeader index={index} title={title} />
-      <Note tone="info" title="Design pending">
-        This section is designed in a later U3 step. The controls below are the working debug view.
-      </Note>
-      <DebugBody id={id} />
-    </div>
-  );
-}
-
-function DebugBody({ id }: { id: SettingsSection }): ReactNode {
-  const wrap = (c: ReactNode) => <div className="dbg flex flex-col gap-2 border border-line bg-paper-raised p-4">{c}</div>;
+function Section({ id }: { id: SettingsSection }) {
   switch (id) {
+    case "nodes":
+      return <NodesSection />;
     case "connection":
-      return wrap(<Connection />);
+      return <ConnectionSection />;
     case "failover":
-      return wrap(<JsonSettings<FailoverSettings> label="Failover" get={commands.getFailoverSettings} put={commands.setFailoverSettings} />);
+      return <FailoverSection />;
     case "safety":
-      return wrap(<JsonSettings<SafetySettings> label="Safety" get={commands.getSafetySettings} put={commands.setSafetySettings} />);
+      return <SafetySection />;
     case "rules":
-      return wrap(<Rules />);
+      return <RulesSection />;
     case "helper":
-      return wrap(<Helper />);
+      return <HelperSection />;
     case "startup":
-      return wrap(<JsonSettings<AppSettings> label="App settings" get={commands.getSettings} put={commands.setSettings} />);
+      return <StartupSection />;
     case "logs":
-      return wrap(<Logs />);
+      return <LogsSection />;
     case "about":
-      return wrap(<About />);
-    default:
-      return null;
+      return <AboutSection />;
   }
 }

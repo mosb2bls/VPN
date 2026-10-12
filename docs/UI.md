@@ -1,7 +1,7 @@
 # EdgeClient — UI notes
 
 Owner: UI agent. Approved design decisions, tokens and frontend structure.
-Built against **SPEC v1.3.1**.
+Built against **SPEC v1.3.2**.
 
 ## 1. Approved decisions (U0)
 
@@ -319,14 +319,13 @@ label stays ink on paper (D14). Release early → bar runs back (120 ms). Confir
 on a plain timer, not an animation callback. Measured: bar ≈ 33 % at 300 ms; a short hold
 deletes nothing.
 
-## 5a. Settings window (U3.1 — proposed)
+## 5a. Settings window (approved U3.1)
 
 - Paper with grain, no grid, no frame (the window has native decorations).
 - Rail 184 px: `EDGECLIENT`, sections `01 … 09` (mono labels, ink block on the current one),
   live status at the bottom (coloured state word as in the popover + node).
 - Content column max 620 px, 40 px side padding: mono index (`01 / NODES`), Archivo 850
   title at 26 px, then the section.
-- Sections not designed yet show a "Design pending" note and the working debug controls.
 
 ### 01 / Nodes
 
@@ -346,6 +345,52 @@ deletes nothing.
   reconnecting" + RECONNECT NOW (= disconnect, then connect). Deleting the active node →
   "This node is carrying traffic" + the BUSY message.
 - Empty: "No nodes yet" + the import rules.
+
+### 02 / Connection
+Capture (SYSTEM PROXY / TUN — WHOLE DEVICE) with the required coverage, IPv6 and no-kill-switch
+copy; link to Helper when TUN lacks it. Routing (RULE / GLOBAL / DIRECT) and DNS profile
+(MAINLAND / OVERSEAS) with plain definitions; resolvers named per SPEC §6.2 (Cloudflare DoH
+via proxy; AliDNS or Quad9 DoH direct; LAN names via the system). While connected: what a change
+does (reconnect / core restart; kill switch or brief direct gap).
+
+### 03 / Failover
+Switch (saves at once) with a live plain-English summary of the current values; fallback node
+(Automatic = first node of the other protocol); duration inputs with units; check targets
+(one per line); Save / Revert / Defaults with per-field errors; recent failover events from
+the activity log.
+
+### 04 / Safety
+Kill switch, Direct fallback (turning on needs an explicit "Turn on anyway"; warning while on),
+Local network bypass — all save at once. Restore networking + `--restore-networking`.
+
+### 05 / Rules
+Version + source, rules date, last / next check, sets table (size, SHA-256 prefix),
+`lastError` (RULES_MISSING explained), Update now (busy, result), auto-update switch and
+interval (1–168 h, per-field error).
+
+### 06 / Helper
+What the helper does, what to expect (admin dialog wording, "Background Items Added"),
+status (cobalt when running, amber when it needs attention), Install / Reinstall /
+Uninstall with "Waiting for administrator approval…"; uninstall disabled while TUN is live;
+cancel shown as a neutral note.
+
+### 07 / Startup
+Launch at login, Connect automatically (names the node and modes it will use), Keep running
+when closed.
+
+### 08 / Logs
+Recovery view when the last restore is incomplete: all six items with results, Retry restore,
+`--restore-networking`. Otherwise the last restore summary + Restore networking. Unclean
+shutdown outcome (`lastRecovery`). Diagnostics export + Show in folder + log detail level.
+Log viewer: level and source filters, pause, polls every 2 s only while visible, sticks to
+the bottom unless scrolled up; entries are already redacted (UTC times).
+
+### 09 / About
+App, SPEC, core, rules, helper versions and platform; privacy by design; font licences shown
+in place from `public/licenses/`.
+
+Settings that toggle save immediately (and revert on error); multi-field forms (Failover,
+rules interval) save with a button.
 
 ## 6. Dependencies
 

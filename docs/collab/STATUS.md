@@ -23,11 +23,11 @@ Each agent edits only its own section.
 
 ## UI
 
-- **Phase/step:** U3.1 — settings shell + Nodes section (awaiting owner review). U2 complete.
-- **SPEC version:** 1.3.1
+- **Phase/step:** U3 — all nine settings sections built (awaiting owner review). U2 complete.
+- **SPEC version:** 1.3.2
 - **Real / stubbed:** `src/api/client.ts` wraps `bindings.ts` (real inside Tauri, mock in a
   browser; `VITE_USE_MOCK` overrides). Mock simulates every SPEC command, event and error
   code. The `popover` window renders the designed popover (`src/popover/`: all states,
-  node sheet, motion 1–6); `settings` renders the designed shell with the Nodes section; other sections show the working debug controls until designed.
+  node sheet, motion 1–6); `settings` renders all nine designed sections (motion 7, 9).
 - **Open requests:** none.
 - **Known issues:** none known; popover show/hide behaviour in the real windows is untested on Windows.
