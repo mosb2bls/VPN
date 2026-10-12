@@ -6,6 +6,7 @@ import { protocolBadge } from "../../lib/format";
 import { useApp } from "../../state/store";
 import { Button, DurationInput, ErrorNote, Field, Note, SectionHeader, SettingRow, Switch, TextInput, fieldErrorFor } from "../kit";
 import { useResource } from "../useResource";
+import { APP_NAME } from "../../lib/brand";
 
 /** SPEC §2.3 defaults. */
 const DEFAULTS: FailoverSettings = {
@@ -49,7 +50,7 @@ export function FailoverSection() {
     <div className="flex flex-col gap-5">
       <SectionHeader index="03 / Failover" title="Failover" />
       <p className="text-secondary text-ink">
-        HY2 uses UDP, which some networks block or slow down. EdgeClient checks the connection through the active node and, if it keeps
+        HY2 uses UDP, which some networks block or slow down. {APP_NAME} checks the connection through the active node and, if it keeps
         failing, switches to the fallback node (usually REALITY over TCP 443). Choosing a node yourself always overrides this.
       </p>
 
@@ -161,7 +162,7 @@ export function FailoverSection() {
       <section className="flex flex-col gap-2 border-t border-line pt-5">
         <h3 className="label">Recent failover events</h3>
         {reasons.length === 0 ? (
-          <p className="text-secondary text-ink-muted">None since EdgeClient started.</p>
+          <p className="text-secondary text-ink-muted">None since {APP_NAME} started.</p>
         ) : (
           <ul className="flex flex-col gap-1">
             {reasons.map((a) => (

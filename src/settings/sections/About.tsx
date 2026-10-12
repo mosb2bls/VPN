@@ -24,6 +24,7 @@ import { commands } from "../../api/client";
 import type { AppInfo, RulesStatus } from "../../api/bindings";
 import { useApp } from "../../state/store";
 import { SectionHeader } from "../kit";
+import { APP_NAME } from "../../lib/brand";
 
 export function AboutSection() {
   const [info, setInfo] = useState<AppInfo | null>(null);
@@ -35,7 +36,7 @@ export function AboutSection() {
   }, []);
   const rows: [string, string][] = info
     ? [
-        ["App", `${info.appName} ${info.appVersion}`],
+        ["App", `${APP_NAME} ${info.appVersion}`],
         ["Interface (SPEC)", info.specVersion],
         ["Proxy core", info.coreVersion ? `sing-box ${info.coreVersion}` : "not bundled"],
         ["Rules", rules ? `${rules.version} (${rules.source})` : "—"],
@@ -57,7 +58,7 @@ export function AboutSection() {
       <section className="flex flex-col gap-2 border-t border-line pt-5 text-secondary">
         <h3 className="label">Privacy</h3>
         <p>
-          By design EdgeClient sends no telemetry. It connects only to your own server, DNS resolvers, health-check targets and rule-set
+          By design {APP_NAME} sends no telemetry. It connects only to your own server, DNS resolvers, health-check targets and rule-set
           sources.
         </p>
       </section>

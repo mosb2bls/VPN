@@ -26,6 +26,7 @@ import { Rolling } from "../ui/Rolling";
 import { Swap } from "../ui/Swap";
 import { NodeSheet } from "./NodeSheet";
 import { TONE_CLASS, derivePopoverView, isProxying, type Action, type Notice, type Tone } from "./view";
+import { APP_NAME } from "../lib/brand";
 
 const ROUTING = [
   { value: "rule", label: "Rule" },
@@ -202,7 +203,7 @@ export function Popover() {
         cols={12}
         rows={17}
         grid={false}
-        tl="EdgeClient"
+        tl={APP_NAME}
         tr="01 / Status"
         bl={(() => {
           const t = directFallback

@@ -1,4 +1,4 @@
-# EdgeClient — UI notes
+# Lynnk — UI notes
 
 Owner: UI agent. Approved design decisions, tokens and frontend structure.
 Built against **SPEC v1.4.2**.
@@ -40,6 +40,7 @@ Built against **SPEC v1.4.2**.
 | D32 | Windows (SPEC 1.4.1, platform from `getAppInfo`): TUN option disabled with "not available on Windows yet" in popover and Connection (arrow keys skip it); Helper section explains instead of offering install; a stored TUN preference shows OFF + USE SYSTEM PROXY. |
 | D33 | Windows TUN + helper **enabled** (SPEC 1.4.2, owner) and labelled `EXPERIMENTAL — UNTESTED ON WINDOWS` (mono uppercase, ink, no new colour): popover under the Capture switch (and on the HELPER MISSING notice), Settings › Connection, Settings › Helper; TUN option tooltip. One flag: `WINDOWS_TUN_EXPERIMENTAL` in `src/lib/experimental.ts`. Supersedes D32. |
 | D34 | Helper install / uninstall failures show `AppError.detail` under the message as selectable mono text, with the error code, for test reports. |
+| D35 | **App name is Lynnk** (owner). The UI takes it from one constant, `APP_NAME` in `src/lib/brand.ts` (window title in `index.html`). OS-level names (window titles, admin / UAC dialogs, bundle, helper service) come from the backend's `APP_NAME` / `tauri.conf.json`. |
 | D8 | **NOT RESTORED** (partial restore, SPEC §2.7): shown whenever `lastRestore.fullyRestored` is false and the app is not proxying; never looks like OFF. Lists each failed/skipped item, offers Retry (Restore networking) and explains `--restore-networking`. Only an engaged kill switch (BLOCKED) ranks above it. |
 
 ## 2. Frontend structure

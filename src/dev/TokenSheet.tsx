@@ -4,6 +4,7 @@ import { useState, type ReactNode } from "react";
 import { motion } from "motion/react";
 import { duration, ease } from "../design/motion";
 import { Frame, MetaLabel } from "../ui/Frame";
+import { APP_NAME } from "../lib/brand";
 
 // ── contrast (WCAG 2.x) ──
 const hex = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
@@ -78,7 +79,7 @@ export function TokenSheet() {
       <div className="mx-auto flex max-w-[1180px] flex-col gap-10">
         <header className="flex items-end justify-between">
           <div>
-            <MetaLabel muted>EdgeClient · U1.2</MetaLabel>
+            <MetaLabel muted>{APP_NAME} · U1.2</MetaLabel>
             <h1 className="mt-1 font-display text-[40px] leading-none font-[850] [font-stretch:82%]">TOKENS</h1>
           </div>
           <MetaLabel muted>docs/UI.md §3 · src/design/</MetaLabel>
@@ -182,7 +183,7 @@ export function TokenSheet() {
               <div key={m.name} className={`${m.cls} flex flex-col gap-3 border border-line p-4`}>
                 <div className="text-[10px] tracking-[0.14em] text-ink-muted uppercase">Mono · {m.name} (approved)</div>
                 <div className="flex justify-between text-[10px] tracking-[0.14em] uppercase">
-                  <span>EdgeClient</span>
+                  <span>{APP_NAME}</span>
                   <span>01 / Status</span>
                 </div>
                 <div className="flex justify-between text-[10px] tracking-[0.14em] uppercase">
@@ -251,7 +252,7 @@ export function TokenSheet() {
                     height={480}
                     {...g}
                     grain={grain}
-                    tl="EdgeClient"
+                    tl={APP_NAME}
                     tr="01 / Status"
                     bl="HY2 · UDP 24443"
                     br={<span className="tabular">02:34:10</span>}

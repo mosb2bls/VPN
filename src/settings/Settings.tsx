@@ -21,6 +21,7 @@ import { NodesSection } from "./sections/Nodes";
 import { RulesSection } from "./sections/Rules";
 import { SafetySection } from "./sections/Safety";
 import { StartupSection } from "./sections/Startup";
+import { APP_NAME } from "../lib/brand";
 
 const SECTIONS: { id: SettingsSection; label: string }[] = [
   { id: "nodes", label: "Nodes" },
@@ -49,7 +50,7 @@ export function Settings() {
   return (
     <div className="paper-grain grid h-full min-h-0 grid-cols-[184px_1fr] text-ink">
       <nav aria-label="Settings sections" className="flex min-h-0 flex-col border-r border-line px-3 pt-5 pb-4">
-        <span className="label px-2 pb-4">EdgeClient</span>
+        <span className="label px-2 pb-4">{APP_NAME}</span>
         <ul className="flex flex-col">
           {SECTIONS.map((s, i) => {
             const on = s.id === section;

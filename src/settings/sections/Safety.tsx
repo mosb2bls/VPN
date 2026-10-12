@@ -5,6 +5,7 @@ import { commands } from "../../api/client";
 import type { RestoreReport, SafetySettings } from "../../api/bindings";
 import { Button, ErrorNote, Note, SectionHeader, SettingRow, Switch } from "../kit";
 import { useResource } from "../useResource";
+import { APP_NAME } from "../../lib/brand";
 
 export function SafetySection() {
   const r = useResource<SafetySettings>(commands.getSafetySettings, commands.setSafetySettings);
@@ -85,7 +86,7 @@ export function SafetySection() {
       <section className="flex flex-col gap-3 border-t border-line pt-5">
         <h3 className="label">Restore networking</h3>
         <p className="text-secondary text-ink">
-          Puts your system proxy, routes, DNS, IPv6 and firewall back the way they were before EdgeClient changed them, and stops the
+          Puts your system proxy, routes, DNS, IPv6 and firewall back the way they were before {APP_NAME} changed them, and stops the
           proxy. Safe to use at any time.
         </p>
         <div>

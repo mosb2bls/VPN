@@ -58,6 +58,7 @@ import {
 } from "./fixtures";
 import { parseLink } from "./links";
 import { validateFailover, validateNodeForm, validateSettings } from "./validate";
+import { APP_NAME } from "../../lib/brand";
 
 // ───────────────────────────── dev configuration ─────────────────────────────
 
@@ -186,7 +187,7 @@ const FAILED_TEXT: Record<RestoreItemKind, (win: boolean) => string> = {
   routes: () => "Tried to remove TUN routes; 2 routes remain",
   dns: () => "Tried to restore DNS servers on Wi-Fi; write was refused",
   ipv6: () => "Tried to restore IPv6 on Wi-Fi; setting unchanged",
-  system_proxy: () => "Tried to restore the system proxy; it still points to EdgeClient",
+  system_proxy: () => `Tried to restore the system proxy; it still points to ${APP_NAME}`,
   firewall: (w) => (w ? "Tried to remove WFP filters; they are still active" : "Tried to remove the pf anchor; it is still loaded"),
 };
 const protoLabel = (n: Node | undefined) => (n?.protocol === "vless_reality" ? "REALITY" : "HY2");
@@ -266,7 +267,7 @@ export class MockEngine {
 
   constructor() {
     this.dev.clipboard = { kind: "text", text: "" };
-    this.log("info", "app", "EdgeClient started (mock backend)");
+    this.log("info", "app", `${APP_NAME} started (mock backend)`);
   }
 
   // ── events ──
@@ -720,7 +721,7 @@ export class MockEngine {
     const items: RestoreItem[] = RESTORE_ORDER.map((kind) => {
       const label = RESTORE_LABELS[kind];
       if (!this.held.has(kind))
-        return { kind, label, action: "Not changed by EdgeClient", result: "not_needed", errorCode: null, errorMessage: null };
+        return { kind, label, action: `Not changed by ${APP_NAME}`, result: "not_needed", errorCode: null, errorMessage: null };
       const f = failures[kind];
       if (!f) {
         this.held.delete(kind);
@@ -1196,8 +1197,8 @@ export class MockEngine {
         const stamp = nowIso().replace(/:/g, "-");
         const win = this.appInfo().platform === "windows";
         const path = win
-          ? `C:\\Users\\you\\Downloads\\EdgeClient-diagnostics-${stamp}.zip`
-          : `/Users/you/Downloads/EdgeClient-diagnostics-${stamp}.zip`;
+          ? `C:\\Users\\you\\Downloads\\${APP_NAME}-diagnostics-${stamp}.zip`
+          : `/Users/you/Downloads/${APP_NAME}-diagnostics-${stamp}.zip`;
         this.log("info", "app", "Diagnostics exported (redacted)");
         this.lastExport = path;
         return ok({ path });
@@ -1258,7 +1259,7 @@ export class MockEngine {
   private appInfo(): AppInfo {
     const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
     return {
-      appName: "EdgeClient",
+      appName: APP_NAME,
       appVersion: "0.1.0",
       specVersion: SPEC_VERSION,
       coreVersion: this.dev.stubMode ? null : "0.0.0-mock",

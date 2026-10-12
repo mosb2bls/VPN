@@ -6,6 +6,7 @@
 //      "helper missing" take precedence over plain OFF
 // The state is carried by the colour of the state word (owner, D21).
 import type { ConnectionState, HelperStatus, Node, RestoreReport, Status } from "../api/bindings";
+import { APP_NAME } from "../lib/brand";
 
 /** Colour of the state word. `hollow` = outlined letters (DIRECT). */
 export type Tone = "ink" | "amber" | "cobalt" | "vermilion" | "hollow";
@@ -152,7 +153,7 @@ export function derivePopoverView(
         tone: "error",
         title: "Traffic is not protected",
         lines: [
-          "Every node is failing and direct fallback is on, so traffic goes out directly — visible to your network. EdgeClient switches back to the proxy as soon as a node recovers.",
+          `Every node is failing and direct fallback is on, so traffic goes out directly — visible to your network. ${APP_NAME} switches back to the proxy as soon as a node recovers.`,
         ],
         links: [{ label: "Direct fallback settings", action: "open_safety" }],
       },
@@ -169,7 +170,7 @@ export function derivePopoverView(
         tone: "error",
         title: "No node is reachable",
         lines: [
-          "EdgeClient keeps checking and reconnects as soon as a node answers.",
+          `${APP_NAME} keeps checking and reconnects as soon as a node answers.`,
           ...(status.captureMode === "system_proxy" ? ["In system proxy mode, apps that ignore the proxy still connect directly."] : []),
         ],
         links: [{ label: "Test nodes", action: "open_nodes" }],
@@ -256,7 +257,7 @@ export function derivePopoverView(
         notice: {
           tone: "info",
           title: "Checking the previous session",
-          lines: ["EdgeClient did not shut down cleanly. It is re-attaching or putting your network settings back."],
+          lines: [`${APP_NAME} did not shut down cleanly. It is re-attaching or putting your network settings back.`],
           links: [],
         },
         primary: outline("RECOVERING…", "none", true),

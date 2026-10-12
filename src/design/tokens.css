@@ -1,4 +1,4 @@
-/* EdgeClient design tokens (UI.md §3). Single source for colour, type, space,
+/* Lynnk design tokens (UI.md §3). Single source for colour, type, space,
    elevation. Fonts are bundled from node_modules — never loaded at runtime. */
 @import "tailwindcss";
 

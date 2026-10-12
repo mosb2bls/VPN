@@ -7,6 +7,7 @@ import { useApp } from "../../state/store";
 import { usePageVisible } from "../../ui/motionGate";
 import { Button, ErrorNote, Note, SectionHeader } from "../kit";
 import { useResource } from "../useResource";
+import { APP_NAME } from "../../lib/brand";
 
 const RESULT: Record<RestoreItem["result"], { text: string; cls: string }> = {
   restored: { text: "Restored", cls: "text-cobalt" },
@@ -49,7 +50,7 @@ export function LogsSection() {
       {incomplete && restore ? (
         <section className="flex flex-col gap-3" aria-labelledby="restore-h">
           <Note tone="error" title="Networking is not back to normal">
-            Some settings EdgeClient changed could not be put back. Until they are, parts of your connection may not work or may bypass
+            Some settings {APP_NAME} changed could not be put back. Until they are, parts of your connection may not work or may bypass
             your usual settings.
           </Note>
           <RestoreTable report={restore} />
@@ -60,7 +61,7 @@ export function LogsSection() {
             <span className="text-secondary text-ink-muted">Safe to retry as often as needed.</span>
           </div>
           <p className="text-secondary text-ink-muted">
-            If EdgeClient cannot open, run it from a terminal with <code className="font-mono text-[11px] text-ink">--restore-networking</code> —
+            If {APP_NAME} cannot open, run it from a terminal with <code className="font-mono text-[11px] text-ink">--restore-networking</code> —
             it does the same restore without the window.
           </p>
         </section>
@@ -68,7 +69,7 @@ export function LogsSection() {
         <section className="flex flex-col gap-3">
           <h3 className="label">Network state</h3>
           <p className="text-secondary">
-            {restore ? `Last restore (${TRIGGER[restore.trigger]}, ${new Date(restore.at).toLocaleString()}) completed — everything EdgeClient changed is back.` : "No restore has run since EdgeClient started."}
+            {restore ? `Last restore (${TRIGGER[restore.trigger]}, ${new Date(restore.at).toLocaleString()}) completed — everything ${APP_NAME} changed is back.` : `No restore has run since ${APP_NAME} started.`}
           </p>
           {restore && (
             <details>
@@ -90,9 +91,9 @@ export function LogsSection() {
       {recovery && (
         <Note tone={recovery.outcome === "restore_incomplete" ? "error" : "info"} title="After the last unclean shutdown">
           {recovery.outcome === "reattached"
-            ? "The previous TUN session was still healthy, so EdgeClient re-attached to it."
+            ? `The previous TUN session was still healthy, so ${APP_NAME} re-attached to it.`
             : recovery.outcome === "restored"
-              ? "EdgeClient put your network settings back."
+              ? `${APP_NAME} put your network settings back.`
               : "Some network settings could not be put back — see above."}{" "}
           <span className="text-ink-muted">{new Date(recovery.at).toLocaleString()}</span>
         </Note>

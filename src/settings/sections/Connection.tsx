@@ -8,6 +8,7 @@ import { Segmented } from "../../ui/Segmented";
 import { isProxying } from "../../popover/view";
 import { Button, ErrorNote, Note, SectionHeader } from "../kit";
 import { useGoTo } from "../nav";
+import { APP_NAME } from "../../lib/brand";
 
 export function ConnectionSection() {
   const status = useApp((s) => s.status);
@@ -30,7 +31,7 @@ export function ConnectionSection() {
       <SectionHeader index="02 / Connection" title="Connection" />
       {error && <ErrorNote error={error} />}
 
-      <Block title="Capture" help="How traffic reaches EdgeClient.">
+      <Block title="Capture" help={`How traffic reaches ${APP_NAME}.`}>
         <Segmented<CaptureMode>
           label="Capture mode"
           options={[
@@ -47,7 +48,7 @@ export function ConnectionSection() {
           </Note>
         ) : (
           <Note tone="info" title="TUN covers the whole device">
-            All traffic goes through EdgeClient. The kill switch blocks traffic while the proxy is down, so nothing leaks.
+            All traffic goes through {APP_NAME}. The kill switch blocks traffic while the proxy is down, so nothing leaks.
           </Note>
         )}
         {tunLabel && <span className="label text-ink">TUN · {tunLabel}</span>}
