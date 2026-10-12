@@ -1,7 +1,7 @@
 # EdgeClient — UI notes
 
 Owner: UI agent. Approved design decisions, tokens and frontend structure.
-Built against **SPEC v1.3.2**.
+Built against **SPEC v1.3.6**.
 
 ## 1. Approved decisions (U0)
 
@@ -33,6 +33,8 @@ Built against **SPEC v1.3.2**.
 | D25 | Node switcher sheet: paper-raised card (`shadow-sheet`) over a 70 % paper wash; rows 48 px — name, mono sub-line `PROTOCOL · server:port` (or "carrying traffic"), latency / Testing… / Failed / Untested / No creds on the right; cobalt bar marks the selected node. Footer: TEST ALL, MANAGE NODES. ↑/↓, Enter, Esc. |
 | D26 | Motion without the dot (supersedes the dot parts of prompt §6.5 / §7.2 moments 2–3): connect/disconnect = state word slides up and fades into its new colour, primary button fill changes smoothly; failover = word turns amber, node name + protocol badge slide to the new node, reason line fades in. The frame-bow idea is dropped. |
 | D27 | DIRECT stays as hollow outlined letters. |
+| D28 | Popover "Last" line opens details: failover reasons → Settings › Failover (recent events), anything else → Settings › Logs. |
+| D29 | Settings copy follows real behaviour: with "Keep running" off, closing Settings quits (disconnect + restore first, SPEC 1.3.4); Direct fallback is marked "not active in this build yet" until the backend implements it. |
 | D8 | **NOT RESTORED** (partial restore, SPEC §2.7): shown whenever `lastRestore.fullyRestored` is false and the app is not proxying; never looks like OFF. Lists each failed/skipped item, offers Retry (Restore networking) and explains `--restore-networking`. Only an engaged kill switch (BLOCKED) ranks above it. |
 
 ## 2. Frontend structure

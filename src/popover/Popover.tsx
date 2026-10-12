@@ -295,7 +295,16 @@ export function Popover() {
             )}
 
             {/* row 16 · last event */}
-            <button type="button" className="flex items-center gap-2 text-left" title={lastText} aria-label="Last event">
+            <button
+              type="button"
+              className="flex items-center gap-2 text-left hover:[&_span]:underline focus-visible:outline-2 focus-visible:outline-cobalt"
+              title={`${lastText} — open details`}
+              aria-label="Last event — open details"
+              // Click for details (prompt §5): failover reasons → Failover, everything else → Logs.
+              onClick={() =>
+                void run(commands.openSettings(!actionNote && lastEvent && /fallback|primary|probe|failover|switch/i.test(lastEvent.text) ? "failover" : "logs"))
+              }
+            >
               <MetaLabel muted>Last</MetaLabel>
               <Swap k={lastText} className="min-w-0 flex-1">
                 <span className={`block truncate text-secondary ${lastClass}`}>{lastText}</span>

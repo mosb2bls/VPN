@@ -29,7 +29,9 @@ export function StartupSection() {
             {node ? ` — now ${protocolBadge(node.protocol)} · ${node.name}, ${mode}` : ""}.
           </SettingRow>
           <SettingRow title="Keep running when the window is closed" control={<Switch label="Keep running when closed" checked={s.closeToTray} onChange={(v) => set({ closeToTray: v })} />}>
-            Closing the settings window leaves EdgeClient in the menu bar. Quit from the popover or the menu-bar menu.
+            {s.closeToTray
+              ? "Closing the settings window leaves EdgeClient running in the menu bar. Quit from the popover or the menu-bar menu."
+              : "Closing the settings window quits EdgeClient — it disconnects and restores your network settings first."}
           </SettingRow>
         </div>
       )}

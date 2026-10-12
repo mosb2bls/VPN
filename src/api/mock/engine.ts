@@ -395,6 +395,7 @@ export class MockEngine {
     if (!active || (st !== "connected" && st !== "degraded")) return;
     const round = this.probeRound(active);
     this.failedRounds = round.roundOk ? 0 : this.failedRounds + 1;
+    if (round.roundOk) this.suppressedThisStreak = false; // a new failure streak may report again
     round.consecutiveFailedRounds = this.failedRounds;
     this.emit("healthCheck", round);
 
@@ -411,7 +412,9 @@ export class MockEngine {
         );
       else this.setStatus({}, `Health check failed (${this.failedRounds}/${this.failoverSettings.failureRounds})`);
       const n = this.failoverSettings.failureRounds;
-      if (this.failoverSettings.enabled && this.failedRounds >= n && this.failedRounds % n === 0) void this.tryFailover();
+      // SPEC 1.3.3: switching is retried every failed round past the threshold (e.g. once the
+      // dwell time has passed), but "suppressed" is reported only once per failure streak.
+      if (this.failoverSettings.enabled && this.failedRounds >= n) void this.tryFailover();
     }
 
     // Background check of the primary while on the fallback.
@@ -444,7 +447,12 @@ export class MockEngine {
       : `HY2: ${n} consecutive probe failures — UDP may be blocked on this network`;
   }
 
+  /** "suppressed" already reported in the current failure streak (SPEC 1.3.3). */
+  private suppressedThisStreak = false;
+
   private suppress(fromId: string, reason: string) {
+    if (this.suppressedThisStreak) return;
+    this.suppressedThisStreak = true;
     this.log("warn", "app", `Failover suppressed: ${reason}`);
     this.emit("failoverEvent", { kind: "suppressed", fromNodeId: fromId, toNodeId: null, reason, at: nowIso() });
   }
@@ -470,6 +478,7 @@ export class MockEngine {
     this.lastSwitchAt = Date.now();
     this.switchTimes.push(this.lastSwitchAt);
     this.failedRounds = 0;
+    this.suppressedThisStreak = false;
     this.primaryOkSince = null;
     const earliest = new Date(
       Date.now() + Math.max(this.failoverSettings.minDwellSecs, this.failoverSettings.returnStableSecs) * 1000,
@@ -507,6 +516,7 @@ export class MockEngine {
     this.switchTimes.push(this.lastSwitchAt);
     this.primaryOkSince = null;
     this.failedRounds = 0;
+    this.suppressedThisStreak = false;
     this.setActive(fo.primaryNodeId, "failback");
     this.emit("failoverEvent", {
       kind: "returned_to_primary",
