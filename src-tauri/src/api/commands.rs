@@ -634,8 +634,108 @@ pub async fn get_logs(limit: u32, min_level: Option<LogLevel>) -> ApiResult<Vec<
 
 #[tauri::command]
 #[specta::specta]
-pub async fn export_diagnostics() -> ApiResult<DiagnosticsExport> {
-    Err(AppError::not_implemented("export_diagnostics"))
+pub async fn export_diagnostics(app: AppHandle) -> ApiResult<DiagnosticsExport> {
+    use crate::diagnostics::{self, Entry};
+    let pretty = |v: &dyn erased::Json| v.json();
+    let (configs, data_dir, mut entries) = with_state(&app, |st| {
+        let nodes = st.nodes.list();
+        let configs: Vec<(String, edge_core::link::NodeConfig)> =
+            nodes.iter().filter_map(|n| st.nodes.config(&n.id).ok().map(|c| (n.id.clone(), c))).collect();
+        let summary: Vec<serde_json::Value> = nodes
+            .iter()
+            .map(|n| serde_json::json!({
+                "id": n.id, "name": n.name, "protocol": n.protocol, "port": n.port,
+                "secretMissing": n.secret_missing, "lastTest": n.last_test,
+            }))
+            .collect();
+        let entries = vec![
+            Entry { name: "status.json".into(), text: pretty(&st.status) },
+            Entry { name: "settings.json".into(), text: pretty(&st.prefs.prefs) },
+            Entry { name: "nodes.json".into(), text: pretty(&summary) },
+            Entry { name: "rules.json".into(), text: pretty(&rules_status(st)) },
+        ];
+        Ok((configs, st.data_dir.clone(), entries))
+    })?;
+    let info = serde_json::json!({
+        "app": edge_core::APP_NAME,
+        "appVersion": env!("CARGO_PKG_VERSION"),
+        "specVersion": super::SPEC_VERSION,
+        "coreVersion": crate::core_bin::CORE_VERSION,
+        "os": diagnostics::os_info(),
+        "arch": std::env::consts::ARCH,
+        "createdAt": edge_core::clock::now_rfc3339(),
+    });
+    entries.insert(0, Entry { name: "info.json".into(), text: pretty(&info) });
+    entries.insert(0, Entry {
+        name: "README.txt".into(),
+        text: "EdgeClient diagnostics. Credentials (passwords, UUIDs, REALITY keys, short IDs, obfs \
+passwords, share links) and the proxy servers' hostnames / IPs are replaced with [redacted] / \
+[host]. Nothing was uploaded; share this file only if you choose to.\n"
+            .into(),
+    });
+    let helper = tauri::async_runtime::spawn_blocking(crate::net::helper_client::dto).await.ok();
+    entries.push(Entry { name: "helper.json".into(), text: pretty(&helper) });
+    for (name, path) in [
+        ("journal.json", data_dir.join("journal.json")),
+        ("last_restore.json", data_dir.join("last_restore.json")),
+    ] {
+        if let Some(t) = diagnostics::read_text(&path) {
+            entries.push(Entry { name: name.into(), text: t });
+        }
+    }
+    let recent: Vec<String> = crate::net::logbuf::global()
+        .recent(1000, None)
+        .into_iter()
+        .map(|e| format!("{} {:?} {:?} {}", e.ts, e.level, e.source, e.message))
+        .collect();
+    entries.push(Entry { name: "logs/recent.txt".into(), text: recent.join("\n") });
+    for f in ["edgeclient.log", "edgeclient.log.1", "edgeclient.log.2", "edgeclient.log.3"] {
+        if let Some(t) = diagnostics::read_text(&data_dir.join("logs").join(f)) {
+            entries.push(Entry { name: format!("logs/{f}"), text: t });
+        }
+    }
+    // Shape of the generated config (system-proxy variant), fully redacted.
+    if let Some((sel, _)) = configs.first()
+        && let Ok(rules) = with_state(&app, |st| st.rules.clone())
+    {
+        let cfg = edge_core::singbox::generate(&edge_core::singbox::GenInput {
+            nodes: configs.iter().map(|(id, c)| (id.as_str(), c)).collect(),
+            selected: sel,
+            routing: edge_core::singbox::Routing::Rule,
+            dns: edge_core::singbox::DnsProfile::Mainland,
+            capture: edge_core::singbox::Capture::SystemProxy { port: 0 },
+            allow_lan: true,
+            controller_port: 0,
+            controller_secret: "[redacted]",
+            rule_sets: edge_core::singbox::RuleSets { geosite_cn: rules.geosite_cn, geoip_cn: rules.geoip_cn },
+        });
+        if let Ok(cfg) = cfg {
+            entries.push(Entry { name: "sample-config.json".into(), text: pretty(&cfg) });
+        }
+    }
+    let red = diagnostics::redactor(&configs);
+    let path = diagnostics::downloads_dir(&data_dir).join(diagnostics::file_name());
+    let p2 = path.clone();
+    tauri::async_runtime::spawn_blocking(move || diagnostics::write_zip(&p2, &entries, &red))
+        .await
+        .map_err(|_| AppError::new(ErrorCode::Internal))??;
+    if let Ok(mut last) = app.state::<shell::ShellState>().last_diagnostics.lock() {
+        *last = Some(path.clone());
+    }
+    crate::net::logbuf::app(LogLevel::Info, "diagnostics exported");
+    Ok(DiagnosticsExport { path: path.to_string_lossy().into_owned() })
+}
+
+/// Pretty JSON for anything serializable (diagnostics).
+mod erased {
+    pub trait Json {
+        fn json(&self) -> String;
+    }
+    impl<T: serde::Serialize> Json for T {
+        fn json(&self) -> String {
+            serde_json::to_string_pretty(self).unwrap_or_default()
+        }
+    }
 }
 
 /// Restore system proxy, routes, DNS, IPv6 and firewall from the journal and

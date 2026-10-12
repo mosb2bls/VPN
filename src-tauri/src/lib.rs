@@ -1,5 +1,6 @@
 pub mod api;
 pub mod core_bin;
+mod diagnostics;
 pub mod net;
 pub mod rules;
 mod rules_update;

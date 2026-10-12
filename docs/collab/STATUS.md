@@ -20,7 +20,8 @@ Each agent edits only its own section.
   pending).
 - **Rules:** bundled + automatic / manual updates (validated, atomic). TUN uses the
   helper's installed copy.
-- **Stubbed:** `export_diagnostics`. Windows: system proxy, helper.
+- **Diagnostics:** `export_diagnostics` real (redacted zip in Downloads).
+- **Not yet on Windows:** system proxy, helper / TUN / WFP kill switch (B3.2).
 - **Known issues:** `npm run tauri dev` fails if another Vite server holds port 1420; use
   `cargo run -p edge-app`. The helper binary must be built (`cargo build -p edge-helper`)
   before Install works in dev.

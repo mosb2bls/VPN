@@ -1,6 +1,6 @@
 # EdgeClient — Backend ↔ UI Interface Specification
 
-**Spec version:** 1.3.5
+**Spec version:** 1.3.6
 **Status:** approved; includes REQ-1 to REQ-4 (Phase B1). "1.0.0" marks a breaking change, not feature completeness — most commands are still stubs.
 **Generated bindings:** `src/api/bindings.ts` (from `src-tauri/src/api/*`, via tauri-specta `=2.0.0-rc.25`)
 
@@ -12,6 +12,7 @@ the disagreement is a backend bug — file a REQ.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.3.6 | 2026-10-12 | **Behaviour:** `export_diagnostics` is real (zip in Downloads; contents and redaction in §2.6); `reveal_diagnostics` reveals it. No type changes. |
 | 1.3.5 | 2026-10-12 | **Behaviour (B2 rules):** `update_rules_now` and the scheduled update (setting `rulesAutoUpdate`, every `rulesUpdateIntervalHours`) are real: newest commits of SagerNet `rule-set` branches, validated (size, sanity matches, `sing-box check`), atomic swap, previous rules kept on failure. `RulesStatus` reports `source`, `updatedAt`, `lastCheckAt`, `nextCheckAt`, `updating`, `lastError`. No type changes. |
 | 1.3.4 | 2026-10-12 | **Behaviour (B5):** `set_settings` applies launch-at-login immediately (macOS LaunchAgent / Windows Run key via the Tauri autostart plugin; failure → `LAUNCH_AT_LOGIN_FAILED`, nothing saved); `get_settings.launchAtLogin` reports the real login-item state; auto-connect runs at launch after recovery, only from a clean `disconnected` state; with close-to-tray off, closing the settings window quits (with restore). No type changes. |
 | 1.3.3 | 2026-10-12 | **Behaviour (B4):** automatic failover is implemented as described in §5 (decision engine `edge_core::failover`, unit-tested with simulated sequences); `failoverEvent` (all three kinds), `activeNodeChanged` (`failover` / `failback`), `Status.failover` with `earliestReturnAt`. Real UDP-block test pending (TESTING M-FAILOVER). No type changes. |
@@ -254,7 +255,7 @@ attempt, scheduled or manual, is also emitted as `rulesUpdated`.
 | `get_settings` | — | `AppSettings` | — | no | **real** |
 | `set_settings` | `settings: AppSettings` | `AppSettings` | `VALIDATION_FAILED` (`rulesUpdateIntervalHours` 1–168), `LAUNCH_AT_LOGIN_FAILED`, `SETTINGS_SAVE_FAILED` | no | **persisted**, validated (launch-at-login / auto-connect / close-to-tray take effect in B5) |
 | `get_logs` | `limit: number, minLevel: LogLevel \| null` | `LogEntry[]` (oldest first) | — | no | **real** |
-| `export_diagnostics` | — | `DiagnosticsExport` | `DIAGNOSTICS_EXPORT_FAILED` | no | stub |
+| `export_diagnostics` | — | `DiagnosticsExport` | `DIAGNOSTICS_EXPORT_FAILED` | no | **real** |
 | `restore_networking` | — | `RestoreReport` (only when fully restored) | `RESTORE_INCOMPLETE` (with `error.restoreReport`, §2.7), `BUSY` | only if helper is not installed but a TUN/firewall journal exists | **real** (system proxy, macOS) |
 | `get_app_info` | — | `AppInfo` | — | no | **real** |
 | `quit_app` | — | `null` (process exits) | — (an incomplete restore is persisted, §2.7; the app still quits) | no | **real** |
@@ -270,8 +271,14 @@ attempt, scheduled or manual, is also emitted as `rulesUpdated`.
   restore first). The popover always hides.
 - `AppSettings` defaults: launch at login off, auto-connect off, close-to-tray on, rule
   auto-update on every 24 h, log level `info`.
-- `export_diagnostics` writes a zip to the user's Downloads folder (logs, redacted config,
-  status, versions, OS info — all redacted) and returns its path. It is never uploaded.
+- `export_diagnostics` writes `EdgeClient-diagnostics-<UTC time>.zip` (mode 0600, never
+  overwrites) to the user's Downloads folder and returns its path; it is never uploaded.
+  Contents: `README.txt`, `info.json` (versions, OS, arch), `status.json`, `settings.json`,
+  `nodes.json` (id, name, protocol, port, last test — no server, no secrets), `rules.json`,
+  `helper.json`, `journal.json` / `last_restore.json` if present, `logs/recent.txt` and the
+  rotated log files, `sample-config.json` (generated config shape). Every file is redacted:
+  all node secrets, UUID-shaped tokens and share links → `[redacted]`; server hostnames,
+  SNIs and server IPs → `[host]`.
 - `restore_networking` is safe at any time: it disconnects, restores system proxy,
   routes, DNS, IPv6 and firewall from the journal (or to known-safe defaults for items we
   own, such as removing our pf anchor), and stops any core. The same is available without
