@@ -212,6 +212,18 @@ Parking: on `popoverHidden` (SPEC 1.2.0, sent after every backend hide) — with
 `visibilitychange → hidden` as fallbacks — the content is set to opacity 0 instantly, so the
 next show starts blank instead of flashing the previous frame.
 
+**Blank-popover bug (owner report, fixed):** after any hide (blur, another menu, Settings,
+Esc) the reopened popover was blank until reloaded. Cause: `useMotionOk()` was written as
+`useContext(gate) && usePageVisible()`, so when the gate closed on hide the second hook was
+skipped; React threw on the changed hook count and unmounted the window. Fixes:
+- hooks are always called unconditionally; `npx eslint src` (rules-of-hooks) now catches this;
+- park **only** on `popoverHidden` (a stray `blur` right after a show no longer parks);
+- self-heal: focus / visible / click on a parked real popover shows it at once;
+- watchdog: if the open animation has not brought the content in 900 ms after a show, snap it;
+- if `hidePopover` fails after Esc, the content is restored instead of staying faded;
+- an error boundary around each window replaces any future render crash with a
+  "Display error" screen offering Reload window / Restore networking / Quit.
+
 Robustness rules (found while testing in a background tab, where animation callbacks pause):
 - Esc fades for 120 ms and calls `hidePopover()` on a **plain timer** of the same length —
   never on an animation-complete callback.
@@ -345,6 +357,8 @@ deletes nothing.
 | tailwindcss, @tailwindcss/vite | 4.3.3 (dev) | tokens as theme variables + utilities |
 | @fontsource-variable/archivo | 5.3.0 | Archivo with width axis, bundled locally (OFL) |
 | @fontsource/ibm-plex-mono | 5.3.0 | mono font, bundled locally (OFL) |
+
+| eslint, typescript-eslint, eslint-plugin-react-hooks | 10.11.0, 8.70.1, 7.1.1 (dev) | rules-of-hooks check (`npx eslint src`) — would have caught the blank-popover bug |
 
 Versions are pinned exactly and were published at least two weeks before install.
 Font licences ship in `public/licenses/` (copied into the app bundle).

@@ -154,6 +154,8 @@ export function QrImport({ onResult, onCancel }: { onResult: (r: ImportResult) =
       })
       .then((u) => (off = u));
     return () => off?.();
+    // Register the native drop listener once per open panel; `run` only sets local state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

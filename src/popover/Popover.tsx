@@ -11,7 +11,7 @@
 //   rows 13–15 live speeds + latency ┘ (rows 11–15) when there is one
 //   row  16    last event
 //   row  17    footer: settings · restore networking · quit
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { commands, on, windowLabel } from "../api/client";
 import { openTimeline, stateTimeline as ST } from "../design/motion";
@@ -66,23 +66,58 @@ export function Popover() {
 
   // Motion moment 1: every show from the tray replays the open sequence.
   const [openSeq, setOpenSeq] = useState(0);
-  /** "esc": fade out, then ask the backend to hide. "parked": already hidden — invisible until shown. */
+  /** "esc": fade out, then ask the backend to hide. "parked": hidden by the backend — invisible until shown. */
   const [hiding, setHiding] = useState<null | "esc" | "parked">(null);
-  /** Skip the open animation when the page is not visible: animations pause there and the
-   *  popover must never come up invisible. */
+  const hidingRef = useRef(hiding);
+  hidingRef.current = hiding;
+  /** Show without the open animation (page not visible, or recovering from a stuck state). */
   const [instant, setInstant] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  const reveal = (animated: boolean) => {
+    setSheet(false);
+    setHiding(null);
+    setInstant(!animated);
+    setOpenSeq((n) => n + 1);
+  };
+
   useEffect(() => {
     const offs: (() => void)[] = [];
-    void on("popoverShown", () => {
-      setSheet(false);
-      setHiding(null);
-      setInstant(document.visibilityState === "hidden");
-      setOpenSeq((n) => n + 1);
-    }).then((u) => offs.push(u));
-    // Primary park signal (SPEC 1.2.0): sent after every backend hide, whatever the cause.
+    void on("popoverShown", () => reveal(document.visibilityState !== "hidden")).then((u) => offs.push(u));
+    // The only park signal (SPEC 1.2.0): the backend sends it after every hide, whatever the
+    // cause. Window blur / visibility are NOT used to park: on macOS a stray blur can arrive
+    // just after the popover is shown, which left it visible but blank (owner bug report).
     void on("popoverHidden", () => setHiding((h) => h ?? "parked")).then((u) => offs.push(u));
     return () => offs.forEach((u) => u());
   }, []);
+
+  // Self-heal: if the real popover window is focused, becomes visible or is clicked while its
+  // content is parked, show it at once — the popover must never stay blank.
+  useEffect(() => {
+    if (windowLabel() !== "popover") return;
+    const heal = () => {
+      if (hidingRef.current === "parked" && document.visibilityState === "visible") reveal(false);
+    };
+    window.addEventListener("focus", heal);
+    window.addEventListener("pointerdown", heal);
+    document.addEventListener("visibilitychange", heal);
+    return () => {
+      window.removeEventListener("focus", heal);
+      window.removeEventListener("pointerdown", heal);
+      document.removeEventListener("visibilitychange", heal);
+    };
+  }, []);
+
+  // Watchdog: if the open animation has not brought the content in shortly after a show
+  // (e.g. the webview had not resumed animating yet), snap it to visible.
+  useEffect(() => {
+    if (openSeq === 0 || instant) return;
+    const t = window.setTimeout(() => {
+      const el = wrapRef.current;
+      if (hidingRef.current === null && el && Number(getComputedStyle(el).opacity) < 0.99) reveal(false);
+    }, 900);
+    return () => window.clearTimeout(t);
+  }, [openSeq, instant]);
 
   // Esc hides the popover (SPEC §2.8). The sheet stops its own Esc first.
   useEffect(() => {
@@ -91,20 +126,15 @@ export function Popover() {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       setHiding("esc");
-      window.setTimeout(() => void commands.hidePopover(), openTimeline.hide.duration * 1000);
+      window.setTimeout(async () => {
+        const r = await commands.hidePopover();
+        // If the window could not be hidden, never leave it faded out.
+        if (r.status === "error") reveal(false);
+        else setHiding("parked");
+      }, openTimeline.hide.duration * 1000);
     };
     window.addEventListener("keydown", onKey);
-    // Only the real popover window hides on blur; the dev page must not.
-    // Fallbacks to popoverHidden: blur and visibilitychange (real popover window only).
-    const onBlur = () => windowLabel() === "popover" && setHiding((h) => h ?? "parked");
-    const onVis = () => document.visibilityState === "hidden" && onBlur();
-    window.addEventListener("blur", onBlur);
-    document.addEventListener("visibilitychange", onVis);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("blur", onBlur);
-      document.removeEventListener("visibilitychange", onVis);
-    };
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   const run = async (p: Promise<Result<unknown>>) => {
@@ -152,6 +182,7 @@ export function Popover() {
   return (
     <motion.div
       key={openSeq}
+      ref={wrapRef}
       className="relative"
       style={{ width: 340, height: 480 }}
       initial={instant ? false : { opacity: 0 }}

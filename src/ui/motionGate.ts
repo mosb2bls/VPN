@@ -17,5 +17,9 @@ export function usePageVisible() {
 
 /** True when it is safe to animate right now. */
 export function useMotionOk() {
-  return useContext(MotionGate) && usePageVisible();
+  // Call every hook unconditionally: `a() && b()` would skip b's hook when a is false,
+  // React would see a different hook count, throw, and unmount the window (blank popover).
+  const gate = useContext(MotionGate);
+  const visible = usePageVisible();
+  return gate && visible;
 }

@@ -5,6 +5,7 @@ import { DevPage } from "./dev/DevPage";
 import { Popover } from "./popover/Popover";
 import { Settings } from "./settings/Settings";
 import { startStore } from "./state/store";
+import { ErrorBoundary } from "./ui/ErrorBoundary";
 import "./design/tokens.css";
 import "./dev/dev.css";
 
@@ -17,5 +18,7 @@ const root =
 void startStore();
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-  <React.StrictMode>{root}</React.StrictMode>,
+  <React.StrictMode>
+    <ErrorBoundary>{root}</ErrorBoundary>
+  </React.StrictMode>,
 );
