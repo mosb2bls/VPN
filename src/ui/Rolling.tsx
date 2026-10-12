@@ -16,7 +16,7 @@ const num = (s: string) => {
   return v;
 };
 
-export function Rolling({ value, className = "" }: { value: string; className?: string }) {
+export function Rolling({ value, className = "", mode = "roll" }: { value: string; className?: string; mode?: "roll" | "fade" }) {
   // Last committed value (updated after commit, so double renders don't lose it).
   const prev = useRef(value);
   useEffect(() => {
@@ -29,6 +29,24 @@ export function Rolling({ value, className = "" }: { value: string; className?: 
 
   const animate = useMotionOk();
   if (!animate) return <span className={className}>{value}</span>;
+  if (mode === "fade")
+    return (
+      <span className={`inline-grid ${className}`} aria-label={value}>
+        <AnimatePresence initial={false}>
+          <motion.span
+            key={value}
+            aria-hidden
+            className="col-start-1 row-start-1 whitespace-pre"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={R.fade}
+          >
+            {value}
+          </motion.span>
+        </AnimatePresence>
+      </span>
+    );
   const chars = [...value];
   return (
     <span className={`inline-flex ${className}`} aria-label={value}>

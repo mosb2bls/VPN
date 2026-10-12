@@ -1,7 +1,7 @@
 # EdgeClient — UI notes
 
 Owner: UI agent. Approved design decisions, tokens and frontend structure.
-Built against **SPEC v1.3.0**.
+Built against **SPEC v1.3.1**.
 
 ## 1. Approved decisions (U0)
 
@@ -269,6 +269,29 @@ they render plain text. Reason: animations pause in hidden webviews, and exiting
 would pile up (measured: up to 10 stacked glyphs per digit slot within seconds, i.e.
 unbounded growth while the popover is hidden and connected). With the gate the DOM node
 count stays flat.
+
+Approved refinement: **Up / Down cross-fade** (120 ms) instead of rolling, because they change
+every second; Latency and the session timer roll.
+
+### 5. Switches (U2.4.5)
+
+`segmentTimeline`. The ink block moves by transform (`x` in % of one option) under the
+selected option, 200 ms enter; label colours cross over in the same 200 ms. The block follows
+the backend's confirmed mode (no optimistic move), so it moves when the mode really changes.
+Measured: one-option slide settles ≈ 190 ms after the backend confirms, no overshoot.
+
+### 6. Node switcher sheet (U2.4.6)
+
+`sheetTimeline`, driven by variants so open / close propagate to every part.
+
+| Element | Motion |
+|---|---|
+| Wash (scrim) | opacity in 200 ms / out 120 ms |
+| Card | rises 40 px + fades in, 320 ms enter (measured: settled ≈ 280 ms) / sinks + fades out, 200 ms exit |
+| Rows | stagger in from 80 ms, 35 ms apart (max 6), 6 px rise (last row in ≈ 390 ms) |
+| Selection bar | slides to the chosen row as soon as it is clicked (shared layout, 200 ms; measured ≈ 140 ms to arrive), then the sheet closes 180 ms after `select_node` succeeds; on error it slides back |
+
+With the motion gate off (hidden page) the sheet opens and closes instantly.
 
 ## 6. Dependencies
 

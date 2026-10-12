@@ -256,8 +256,8 @@ export function Popover() {
                 </p>
                 {/* rows 13–15 · speeds (row 15 left open) */}
                 <div className="row-span-3 grid grid-cols-3 content-start pt-1">
-                  <Stat label="Up" value={stats ? rate(stats.upBytesPerSec) : "—"} />
-                  <Stat label="Down" value={stats ? rate(stats.downBytesPerSec) : "—"} />
+                  <Stat label="Up" mode="fade" value={stats ? rate(stats.upBytesPerSec) : "—"} />
+                  <Stat label="Down" mode="fade" value={stats ? rate(stats.downBytesPerSec) : "—"} />
                   <Stat label="Latency" value={stats?.latencyMs != null ? `${stats.latencyMs} ms` : "—"} />
                 </div>
               </>
@@ -281,9 +281,11 @@ export function Popover() {
         )}
       </Frame>
 
-      {sheet && status && (
-        <NodeSheet nodes={nodes} selectedId={status.selectedNodeId} activeId={status.activeNodeId} onClose={() => setSheet(false)} />
-      )}
+      <AnimatePresence>
+        {sheet && status && (
+          <NodeSheet key="sheet" nodes={nodes} selectedId={status.selectedNodeId} activeId={status.activeNodeId} onClose={() => setSheet(false)} />
+        )}
+      </AnimatePresence>
       </MotionGate.Provider>
     </motion.div>
   );
@@ -380,12 +382,12 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, mode = "roll" }: { label: string; value: string; mode?: "roll" | "fade" }) {
   const empty = value === "—";
   return (
     <div className="flex flex-col">
       <MetaLabel muted>{label}</MetaLabel>
-      <Rolling value={value} className={`font-display text-[18px] leading-6 font-[650] tabular ${empty ? "text-ink-muted" : "text-ink"}`} />
+      <Rolling value={value} mode={mode} className={`font-display text-[18px] leading-6 font-[650] tabular ${empty ? "text-ink-muted" : "text-ink"}`} />
     </div>
   );
 }

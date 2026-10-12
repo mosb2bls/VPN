@@ -25,8 +25,8 @@ Each agent edits only its own section.
 
 ## UI
 
-- **Phase/step:** U2.4.4 — motion moment 4: numbers (awaiting owner review)
-- **SPEC version:** 1.3.0 (`RULES_MISSING` in mock; rules status shaped like the real bundle)
+- **Phase/step:** U2 complete (popover: all states, node sheet, motion 1–6); starting U3
+- **SPEC version:** 1.3.1
 - **Real / stubbed:** `src/api/client.ts` wraps `bindings.ts` (real inside Tauri, mock in a
   browser; `VITE_USE_MOCK` overrides). Mock simulates every SPEC command, event and error
   code. The `popover` window renders the designed popover (`src/popover/`: all states,

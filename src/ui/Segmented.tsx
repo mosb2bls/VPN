@@ -1,6 +1,8 @@
-// Segmented control: an ink block sits under the selected option (it slides in
-// motion step U2.4). Keyboard: arrow keys move the selection (radio group).
+// Segmented control: an ink block slides under the selected option (motion
+// moment 5). Keyboard: arrow keys move the selection (radio group).
 import type { KeyboardEvent } from "react";
+import { motion } from "motion/react";
+import { segmentTimeline } from "../design/motion";
 
 export interface SegmentedOption<T extends string> {
   value: T;
@@ -36,10 +38,14 @@ export function Segmented<T extends string>({
       className="relative grid h-[22px] border border-ink"
       style={{ gridTemplateColumns: `repeat(${options.length}, 1fr)` }}
     >
-      <span
+      {/* Moves by transform (x in % of its own width = one option). */}
+      <motion.span
         aria-hidden
-        className="absolute inset-y-0 bg-ink"
-        style={{ left: `${(idx * 100) / options.length}%`, width: `${100 / options.length}%` }}
+        className="absolute inset-y-0 left-0 bg-ink"
+        style={{ width: `${100 / options.length}%` }}
+        initial={false}
+        animate={{ x: `${idx * 100}%` }}
+        transition={segmentTimeline.slide}
       />
       {options.map((o, i) => {
         const on = i === idx;
@@ -52,7 +58,7 @@ export function Segmented<T extends string>({
             tabIndex={on ? 0 : -1}
             disabled={disabled}
             onClick={() => onChange(o.value)}
-            className={`label relative z-10 border-l border-ink first:border-l-0 transition-colors duration-fast ${
+            className={`label relative z-10 border-l border-ink first:border-l-0 transition-colors duration-base ease-enter ${
               on ? "text-paper" : "text-ink hover:bg-ink/5"
             } focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cobalt disabled:opacity-40`}
           >

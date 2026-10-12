@@ -1,8 +1,12 @@
 // Quick node switcher (UI prompt §5): a paper card over the popover listing
 // each node with protocol badge and last test. Select to switch; Test all;
 // Manage nodes. Keyboard: ↑/↓ move, Enter selects, Esc closes.
-// Static in U2.3 — the slide-up and stagger arrive in motion step U2.4.
+// Motion moment 6: slides up over a fading wash, rows stagger in, the
+// selection bar slides to the chosen row before the sheet closes.
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { motion } from "motion/react";
+import { sheetTimeline as S, staggerDelay } from "../design/motion";
+import { useMotionOk } from "../ui/motionGate";
 import { commands } from "../api/client";
 import type { AppError, Node } from "../api/bindings";
 import { protocolBadge } from "../lib/format";
@@ -23,6 +27,10 @@ export function NodeSheet({
 }) {
   const [tests, setTests] = useState<Record<string, TestState>>({});
   const [selectError, setSelectError] = useState<AppError | null>(null);
+  /** Row the selection bar is moving to while select_node runs. */
+  const [pending, setPending] = useState<string | null>(null);
+  const animate = useMotionOk();
+  const markOn = pending ?? selectedId;
   const rows = useRef<(HTMLButtonElement | null)[]>([]);
 
   // Focus the current node when the sheet opens.
@@ -46,9 +54,14 @@ export function NodeSheet({
 
   const select = async (n: Node) => {
     if (n.id === selectedId) return onClose();
+    setSelectError(null);
+    setPending(n.id); // the bar starts sliding right away
     const r = await commands.selectNode(n.id);
-    if (r.status === "ok") onClose();
-    else setSelectError(r.error);
+    if (r.status === "ok") window.setTimeout(onClose, animate ? S.closeAfterSelectMs : 0);
+    else {
+      setPending(null); // back to the real selection
+      setSelectError(r.error);
+    }
   };
 
   const onKey = (e: KeyboardEvent) => {
@@ -64,13 +77,30 @@ export function NodeSheet({
   };
 
   return (
-    <div className="absolute inset-0 z-20" onKeyDown={onKey}>
+    <motion.div
+      className="absolute inset-0 z-20"
+      onKeyDown={onKey}
+      initial={animate ? "closed" : false}
+      animate="open"
+      exit={animate ? "closed" : undefined}
+    >
       {/* scrim: plain paper wash, no blur (§6.1) */}
-      <button type="button" aria-label="Close node list" className="absolute inset-0 bg-paper/70" onClick={onClose} tabIndex={-1} />
-      <section
+      <motion.button
+        type="button"
+        aria-label="Close node list"
+        className="absolute inset-0 bg-paper/70"
+        onClick={onClose}
+        tabIndex={-1}
+        variants={{ closed: { opacity: 0, transition: S.scrimOut }, open: { opacity: 1, transition: S.scrimIn } }}
+      />
+      <motion.section
         role="dialog"
         aria-label="Choose node"
         className="absolute inset-x-3 bottom-3 flex max-h-[392px] flex-col rounded-xs bg-paper-raised shadow-sheet"
+        variants={{
+          closed: { y: S.cardShift, opacity: 0, transition: S.cardOut },
+          open: { y: 0, opacity: 1, transition: S.cardIn },
+        }}
       >
         <header className="flex items-center justify-between px-4 pt-3 pb-2">
           <MetaLabel>Nodes · {nodes.length}</MetaLabel>
@@ -84,7 +114,14 @@ export function NodeSheet({
             const selected = n.id === selectedId;
             const t = tests[n.id];
             return (
-              <li key={n.id} role="none">
+              <motion.li
+                key={n.id}
+                role="none"
+                variants={{
+                  closed: { opacity: 0, y: S.rowShift, transition: { duration: 0 } },
+                  open: { opacity: 1, y: 0, transition: { ...S.cardIn, delay: S.rowsDelay + staggerDelay(i) } },
+                }}
+              >
                 <button
                   ref={(el) => {
                     rows.current[i] = el;
@@ -95,8 +132,15 @@ export function NodeSheet({
                   onClick={() => void select(n)}
                   className="group relative flex h-12 w-full items-center gap-3 px-4 text-left hover:bg-ink/[0.04] focus-visible:bg-ink/[0.06] focus-visible:outline-none"
                 >
-                  {/* selection mark: cobalt bar on the left edge */}
-                  <span aria-hidden className={`absolute inset-y-2 left-0 w-[3px] ${selected ? "bg-cobalt" : "bg-transparent"}`} />
+                  {/* selection mark: cobalt bar on the left edge; slides between rows */}
+                  {n.id === markOn && (
+                    <motion.span
+                      aria-hidden
+                      layoutId={animate ? "node-sheet-mark" : undefined}
+                      transition={S.mark}
+                      className="absolute inset-y-2 left-0 w-[3px] bg-cobalt"
+                    />
+                  )}
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-body font-medium">{n.name}</span>
                     <span className="label block truncate text-ink-muted">
@@ -105,7 +149,7 @@ export function NodeSheet({
                   </span>
                   <NodeResult node={n} test={t} />
                 </button>
-              </li>
+              </motion.li>
             );
           })}
         </ul>
@@ -129,8 +173,8 @@ export function NodeSheet({
             Manage nodes
           </button>
         </footer>
-      </section>
-    </div>
+      </motion.section>
+    </motion.div>
   );
 }
 

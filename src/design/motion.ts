@@ -84,6 +84,32 @@ export const swapTimeline = {
  */
 export const rollTimeline = {
   roll: { duration: 0.18, ease: ease.enter },
+  /** Speeds change every second: a quick cross-fade instead of a roll (calmer). */
+  fade: { duration: duration.fast, ease: ease.enter },
   /** Fraction of the line height a digit travels (clipped). */
   shift: "70%",
+} as const;
+
+/** Motion moment 5 — switches: the ink block slides under the selected option. */
+export const segmentTimeline = {
+  slide: { duration: duration.base, ease: ease.enter },
+} as const;
+
+/**
+ * Motion moment 6 — node switcher sheet: slides up as a paper card over a
+ * fading wash; rows stagger in; on select the selection bar slides to the new
+ * row, then the sheet closes (slides down, quick fade).
+ */
+export const sheetTimeline = {
+  scrimIn: { duration: duration.base, ease: ease.enter },
+  scrimOut: { duration: duration.fast, ease: ease.exit },
+  cardIn: { duration: duration.slow, ease: ease.enter },
+  cardOut: { duration: duration.base, ease: ease.exit },
+  /** px the card travels (from below its resting place). */
+  cardShift: 40,
+  rowsDelay: 0.08,
+  rowShift: 6,
+  mark: { duration: duration.base, ease: ease.enter },
+  /** Pause after the selection bar arrives before the sheet closes. */
+  closeAfterSelectMs: 180,
 } as const;
