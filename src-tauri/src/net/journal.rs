@@ -40,6 +40,9 @@ pub struct Journal {
     pub created_at: String,
     pub core: Option<CoreRecord>,
     pub system_proxy: Option<SystemProxyRecord>,
+    /// A TUN session was requested from the privileged helper.
+    #[serde(default)]
+    pub tun: bool,
 }
 
 impl Journal {
@@ -50,7 +53,7 @@ impl Journal {
 
 impl Default for Journal {
     fn default() -> Self {
-        Self { version: 1, created_at: edge_core::clock::now_rfc3339(), core: None, system_proxy: None }
+        Self { version: 1, created_at: edge_core::clock::now_rfc3339(), core: None, system_proxy: None, tun: false }
     }
 }
 

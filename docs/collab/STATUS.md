@@ -4,25 +4,22 @@ Each agent edits only its own section.
 
 ## Backend
 
-- **Phase/step:** B2.7 — system proxy mode on macOS (core runner, Clash API, journal,
-  exact restore, recovery, `--restore-networking`) + real-server harness (done; awaiting
-  owner runs of the harness and the end-to-end test). Next: B3 (helper / TUN) after the
-  owner's results; rule auto-update and Windows system proxy later in plan.
-- **SPEC version:** 1.3.1 (`docs/SPEC.md`, `src/api/bindings.ts`)
-- **Real:** nodes (import text / clipboard / QR, add, update, delete, reorder, select —
-  persisted, keychain); all settings; **connect / disconnect / restore_networking / quit /
-  mode switches in system proxy mode on macOS**; live node switching; `test_node`
-  (temporary core); `get_logs` (redacted); launch recovery from the journal; windows + tray;
+- **Phase/step:** B3.1 — macOS privileged helper + TUN mode + pf kill switch + re-attach
+  (implemented and unit-tested; **awaiting owner install + real TUN tests**, TESTING §6).
+  Next: Windows service / WFP (B3.2) after the macOS results; then failover (B4).
+- **SPEC version:** 1.3.2 (`docs/SPEC.md`, `src/api/bindings.ts`)
+- **Real:** nodes, settings, system proxy mode (macOS), TUN mode via helper (macOS),
+  helper status / install / uninstall (macOS, admin prompt), live node switch, test_node,
+  logs, launch recovery (restore or TUN re-attach), `--restore-networking`, windows + tray,
   rules status.
-- **Verified:** harness H-1 PASS for HY2 and REALITY (exit GB); real `networksetup`
-  round trip PASS. **Not yet verified:** the in-app end-to-end flow M-SYSPROXY (connect,
-  disconnect, quit, force-quit recovery, `--restore-networking`).
-- **Stored but not applied yet:** launch at login, auto-connect, close-to-tray (B5); failover
-  between nodes (B4; health checks run and drive connected ↔ degraded only).
-- **Stubbed (`NOT_IMPLEMENTED`):** `update_rules_now`, install/uninstall helper,
-  `export_diagnostics`. TUN → `HELPER_NOT_INSTALLED`. Windows system proxy → error.
+- **Verified on real systems:** harness H-1 (HY2 + REALITY, exit GB); networksetup round
+  trip. **Not yet:** M-SYSPROXY, M-HELPER, M-TUN, M-IPV6, M-DNSLEAK, M-KILL, M-TUN-FORCEKILL.
+- **Stored but not applied yet:** launch at login, auto-connect, close-to-tray (B5);
+  failover between nodes (B4).
+- **Stubbed:** `update_rules_now`, `export_diagnostics`. Windows: system proxy, helper.
 - **Known issues:** `npm run tauri dev` fails if another Vite server holds port 1420; use
-  `cargo run -p edge-app`.
+  `cargo run -p edge-app`. The helper binary must be built (`cargo build -p edge-helper`)
+  before Install works in dev.
 
 ## UI
 

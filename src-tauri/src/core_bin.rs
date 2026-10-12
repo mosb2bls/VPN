@@ -29,6 +29,11 @@ fn candidates() -> Vec<PathBuf> {
     v
 }
 
+/// Expected SHA-256 of the core for this build ("" if not fetched).
+pub fn expected_sha256() -> &'static str {
+    EXPECTED_SHA256
+}
+
 /// Find the core binary and verify its hash. Returns its path.
 pub fn locate_verified() -> ApiResult<PathBuf> {
     if EXPECTED_SHA256.is_empty() {

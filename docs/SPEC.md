@@ -1,6 +1,6 @@
 # EdgeClient — Backend ↔ UI Interface Specification
 
-**Spec version:** 1.3.1
+**Spec version:** 1.3.2
 **Status:** approved; includes REQ-1 to REQ-4 (Phase B1). "1.0.0" marks a breaking change, not feature completeness — most commands are still stubs.
 **Generated bindings:** `src/api/bindings.ts` (from `src-tauri/src/api/*`, via tauri-specta `=2.0.0-rc.25`)
 
@@ -12,6 +12,7 @@ the disagreement is a backend bug — file a REQ.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.3.2 | 2026-10-12 | **Behaviour (B3.1, macOS):** `get_helper_status` / `install_helper` / `uninstall_helper` are real (admin prompt); `connect` in **TUN mode** runs through the helper (TUN + IPv6 capture/reject, pf kill switch on core crash, re-attach after app crash). Untested on a real Mac until the owner installs the helper. ADR-0005, ADR-0006. No type changes. |
 | 1.3.1 | 2026-10-12 | **Behaviour (B2.7, macOS):** `connect` / `disconnect` / `restore_networking` / `quit_app` / mode setters work in **system proxy mode** (journal, exact restore, per-item reports, launch recovery, `--restore-networking`); `test_node` and `get_logs` are real; `delete_node` of the active node → `BUSY`. TUN still → `HELPER_NOT_INSTALLED`; Windows system proxy not yet (→ `SYSTEM_PROXY_SET_FAILED`). See ADR-0004. No type changes. |
 | 1.3.0 | 2026-10-12 | **Additive (B2.6):** error code `RULES_MISSING`. **Behaviour:** `get_rules_status` is real (bundled, pinned `geosite-cn` / `geoip-cn` rule-sets; `version` = manifest version, `updatedAt` = newest source commit time). Rule *updates* are still `NOT_IMPLEMENTED`. |
 | 1.2.1 | 2026-10-12 | **Clarification / tightened import (B2.5):** VLESS `spx` (spiderX) is now **rejected** if non-empty and `VlessForm.spiderX` must be null — sing-box 1.14 has no spiderX option (previously accepted and would have been ignored). §6 now names the exact resolvers and routing order (ADR-0003). No type changes. |
@@ -157,7 +158,7 @@ must be `null` in this version (non-null → `VALIDATION_FAILED`, field `pinSha2
 
 | Command | Params | Returns | Errors | Elevation | B1 |
 |---|---|---|---|---|---|
-| `connect` | — | `Status` | `NO_NODES`, `NO_NODE_SELECTED`, `SECRET_MISSING`, `RULES_MISSING`, `CORE_*`, `SYSTEM_PROXY_SET_FAILED`, `HELPER_NOT_INSTALLED`, `HELPER_*`, `TUN_START_FAILED`, `PORT_IN_USE`, `DNS_BOOTSTRAP_FAILED`, `BUSY` | TUN: no (helper already installed) | **real in system proxy mode (macOS)**; TUN → `HELPER_NOT_INSTALLED` |
+| `connect` | — | `Status` | `NO_NODES`, `NO_NODE_SELECTED`, `SECRET_MISSING`, `RULES_MISSING`, `CORE_*`, `SYSTEM_PROXY_SET_FAILED`, `HELPER_NOT_INSTALLED`, `HELPER_*`, `TUN_START_FAILED`, `PORT_IN_USE`, `DNS_BOOTSTRAP_FAILED`, `BUSY` | TUN: no (helper already installed) | **real (macOS)**: system proxy mode, and TUN mode via the helper |
 | `disconnect` | — | `Status` | `RESTORE_INCOMPLETE` (with `error.restoreReport`, §2.7), `BUSY` | no | **real** (system proxy, macOS) |
 | `get_status` | — | `Status` | — | no | placeholder |
 | `set_capture_mode` | `mode: CaptureMode` | `Status` | as `connect` when connected; `SETTINGS_SAVE_FAILED` | no | **persisted** |
@@ -169,6 +170,15 @@ must be `null` in this version (non-null → `VALIDATION_FAILED`, field `pinSha2
   and restored exactly; PAC / auto-discovery turned off while connected if they were on;
   services with an authenticated proxy are refused → `SYSTEM_PROXY_SET_FAILED`). Node edits
   while connected take effect on the next connect or mode change. Details: ADR-0004.
+- **TUN mode (macOS, B3.1):** requires the helper (precondition errors
+  `HELPER_NOT_INSTALLED` / `HELPER_UNREACHABLE` / `HELPER_VERSION_MISMATCH`, state
+  unchanged). The helper runs sing-box with a TUN interface (all apps, IPv4; public IPv6 is
+  captured and rejected so apps fall back fast); the system proxy is not touched
+  (`systemProxySet: false`, `tunActive: true`). If the core crashes the helper engages the
+  **kill switch** (`killSwitchActive: true`, state `reconnecting`) and restarts it; on
+  success the kill switch is released. After an app crash the TUN session keeps running and
+  the next launch **re-attaches** (`lastRecovery.outcome = "reattached"`). Details:
+  ADR-0005, ADR-0006.
 - `connect` returns once the state is `connected` (or `direct`), or fails. Progress is
   visible through `statusChanged` events (`connecting` first).
 - **Preconditions** (REQ-3): `connect` checks these **before** leaving `disconnected`; if
@@ -223,9 +233,9 @@ attempt, scheduled or manual, is also emitted as `rulesUpdated`.
 
 | Command | Params | Returns | Errors | Elevation | B1 |
 |---|---|---|---|---|---|
-| `get_helper_status` | — | `HelperStatus` | — | no | placeholder (not installed) |
-| `install_helper` | — | `HelperStatus` | `HELPER_INSTALL_CANCELLED`, `HELPER_INSTALL_FAILED` | **yes** — macOS admin password prompt / Windows UAC | stub |
-| `uninstall_helper` | — | `HelperStatus` | `BUSY` (TUN connected), `HELPER_UNINSTALL_FAILED` | **yes** | stub |
+| `get_helper_status` | — | `HelperStatus` | — | no | **real** (`running` = socket answers; `needsUpgrade` = version / protocol / core hash differs) |
+| `install_helper` | — | `HelperStatus` | `HELPER_INSTALL_CANCELLED`, `HELPER_INSTALL_FAILED`, `CORE_*`, `RULES_*` | **yes** — macOS admin password prompt / Windows UAC | **real (macOS)**; Windows → `UNSUPPORTED_PLATFORM` |
+| `uninstall_helper` | — | `HelperStatus` | `BUSY` (TUN connected), `HELPER_INSTALL_CANCELLED`, `HELPER_UNINSTALL_FAILED` | **yes** | **real (macOS)** |
 
 ### 2.6 App
 
@@ -588,7 +598,9 @@ Things the UI must explain to the user (wording is the UI's choice; substance is
 2. **System proxy mode cannot stop IPv6 bypass and has no kill switch.** If the core
    stops, apps fall back to direct connections. Recommend TUN mode for full-device
    protection.
-3. **TUN mode needs a one-time privileged helper install.** Explain before calling
+3. **TUN mode needs a one-time privileged helper install** (macOS shows its standard
+   administrator password dialog, worded by macOS: "EdgeClient wants to make changes" /
+   osascript). macOS may also show a "Background Items Added" notification. Explain before calling
    `install_helper` that macOS will ask for an administrator password (Windows: UAC),
    what the helper does (runs the bundled proxy core with a TUN interface, applies the
    kill switch, restores networking), and that it can be uninstalled from the app.

@@ -28,6 +28,10 @@ use crate::validate::{self, Host};
 pub const TAG_PROXY: &str = "proxy";
 pub const TAG_DIRECT: &str = "direct";
 pub const TAG_MIXED_IN: &str = "mixed-in";
+pub const TAG_TUN_IN: &str = "tun-in";
+/// TUN interface addresses (private ranges; IPv6 included so public IPv6 is
+/// captured and then rejected instead of bypassing the tunnel).
+pub const TUN_ADDRESSES: [&str; 2] = ["172.19.0.1/30", "fdfe:dcba:9876::1/126"];
 pub const DNS_PROXY: &str = "dns-proxy";
 pub const DNS_DIRECT: &str = "dns-direct";
 pub const DNS_BOOTSTRAP: &str = "dns-bootstrap";
@@ -52,6 +56,8 @@ pub enum DnsProfile {
 pub enum Capture {
     /// Local mixed (HTTP + SOCKS5) inbound on 127.0.0.1:port.
     SystemProxy { port: u16 },
+    /// TUN inbound with auto_route + strict_route (run by the privileged helper).
+    Tun,
 }
 
 #[derive(Debug, Clone)]
@@ -182,12 +188,22 @@ pub fn generate(input: &GenInput) -> Result<Value, GenError> {
         json!({ "type": "local", "tag": "geoip-cn", "format": "binary", "path": input.rule_sets.geoip_cn }),
     ];
 
+    let tun = matches!(input.capture, Capture::Tun);
     let inbounds = match &input.capture {
         Capture::SystemProxy { port } => vec![json!({
             "type": "mixed",
             "tag": TAG_MIXED_IN,
             "listen": "127.0.0.1",
             "listen_port": port
+        })],
+        // DNS: with auto_route, sing-box 1.14 hijacks DNS by default
+        // (dns_mode = hijack); the hijack-dns route rule handles it.
+        Capture::Tun => vec![json!({
+            "type": "tun",
+            "tag": TAG_TUN_IN,
+            "address": TUN_ADDRESSES,
+            "auto_route": true,
+            "strict_route": true
         })],
     };
 
@@ -205,7 +221,9 @@ pub fn generate(input: &GenInput) -> Result<Value, GenError> {
             "rules": rules,
             "rule_set": rule_set,
             "final": TAG_PROXY,
-            "default_domain_resolver": DNS_BOOTSTRAP
+            "default_domain_resolver": DNS_BOOTSTRAP,
+            // TUN: bind outbound sockets to the physical interface (no loops).
+            "auto_detect_interface": tun
         },
         "experimental": {
             "clash_api": {
@@ -388,6 +406,24 @@ mod tests {
     }
 
     #[test]
+    fn tun_capture() {
+        let a = hy2();
+        let mut i = input(vec![("a", &a)], Routing::Rule, DnsProfile::Mainland, true, Path::new("/r"));
+        i.capture = Capture::Tun;
+        let cfg = generate(&i).unwrap();
+        let tun = &cfg["inbounds"][0];
+        assert_eq!(tun["type"], "tun");
+        assert_eq!(tun["auto_route"], true);
+        assert_eq!(tun["strict_route"], true);
+        assert!(tun["address"].as_array().unwrap().iter().any(|a| a.as_str().unwrap().contains(':')), "IPv6 captured");
+        assert_eq!(cfg["route"]["auto_detect_interface"], true);
+        // IPv6 destinations are rejected (fast fail) — captured by the TUN above.
+        assert!(cfg["route"]["rules"].as_array().unwrap().iter().any(|r| r["ip_version"] == 6 && r["action"] == "reject"));
+        let sp = generate(&input(vec![("a", &a)], Routing::Rule, DnsProfile::Mainland, true, Path::new("/r"))).unwrap();
+        assert_eq!(sp["route"]["auto_detect_interface"], false);
+    }
+
+    #[test]
     fn dns_profiles() {
         let a = hy2();
         let ml = generate(&input(vec![("a", &a)], Routing::Rule, DnsProfile::Mainland, true, Path::new("/r"))).unwrap();
@@ -452,15 +488,21 @@ mod tests {
         for routing in [Routing::Rule, Routing::Global] {
             for dns in [DnsProfile::Mainland, DnsProfile::Overseas] {
                 for lan in [true, false] {
-                    let cfg = generate(&input(vec![("a", &a), ("b", &b), ("c", &c)], routing, dns, lan, dir.path())).unwrap();
+                  for tun in [false, true] {
+                    let mut i = input(vec![("a", &a), ("b", &b), ("c", &c)], routing, dns, lan, dir.path());
+                    if tun {
+                        i.capture = Capture::Tun;
+                    }
+                    let cfg = generate(&i).unwrap();
                     let path = dir.path().join("config.json");
                     std::fs::write(&path, serde_json::to_vec(&cfg).unwrap()).unwrap();
                     let out = std::process::Command::new(&bin).args(["check", "-c"]).arg(&path).output().unwrap();
                     assert!(
                         out.status.success(),
-                        "sing-box check failed for {routing:?}/{dns:?}/lan={lan}: {}",
+                        "sing-box check failed for {routing:?}/{dns:?}/lan={lan}/tun={tun}: {}",
                         String::from_utf8_lossy(&out.stderr)
                     );
+                  }
                 }
             }
         }

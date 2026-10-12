@@ -3,6 +3,7 @@
 
 pub mod clash;
 pub mod coreproc;
+pub mod helper_client;
 pub mod journal;
 pub mod logbuf;
 pub mod osproxy;

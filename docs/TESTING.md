@@ -46,6 +46,12 @@ anchor rules), helper/TUN state. Scheduled phase in brackets.
 | M-SHELL | **Windows and tray (REQ-1).** Launch: no Dock icon, tray icon present, no window visible. Left-click tray: popover appears directly below the icon, inside the screen, with a shadow; click elsewhere → hides; click tray while open → closes (does not flicker back). Esc in popover → hides (once the UI wires it). Right-click / Ctrl-click tray → menu with header, Connect, Node ▸, Routing ▸, Capture ▸, Restore networking, Settings…, Quit; choosing a node / mode updates the check marks; Connect shows an error (stub). Settings… → settings window focused; close button hides it; Quit exits. `popoverHidden` reaches the popover on every hide (blur, tray toggle, Esc, Settings…) — check in the UI dev overlay. Repeat on an external monitor. | B1.3 | not run |
 | H-1 | **Real-server harness, system-proxy shape** (owner runs; see §4). Pass: every HY2 and REALITY link PASS (both probe targets, HTTP proxy via the local inbound), exit country = GB. | B2.7 | **PASS** 2026-10-12 (owner, macOS arm64, sing-box 1.14.3, DNS Mainland, Rule): HY2 — gstatic 58 ms, cloudflare 152 ms, HTTP proxy ok 40 ms, exit GB · REALITY Vision — gstatic 58 ms, cloudflare 61 ms, HTTP proxy ok 82 ms, exit GB. First confirmation that the sing-box HY2 client works with the Xray Hysteria inbound. |
 | M-SYSPROXY | **System proxy end to end** (see §5). Pass: proxies point to 127.0.0.1 while connected; a non-CN site loads via the UK exit and a CN site works; live node switch and Rule ↔ Global work; after Disconnect, after Quit, and after force-quit + relaunch (and after `--restore-networking`), the proxy snapshot equals the one taken before connecting. | B2.7 | not run |
+| M-HELPER | **Helper install / status / uninstall** (TESTING §6). Pass: admin prompt appears once; `getHelperStatus` → installed + running; files root-owned (`ls -l /Library/PrivilegedHelperTools/io.github.mosb2bls.edgeclient.*`, socket `/var/run/io.github.mosb2bls.edgeclient.helper.sock` owned by you, mode `srw-------`); uninstall removes everything. Cancel at the prompt → "installation was cancelled". | B3.1 | not run |
+| M-TUN | **TUN connectivity**: helper installed, capture mode TUN, connect with HY2, then REALITY. Pass: `ifconfig` shows a utun with 172.19.0.1; `curl -s https://1.1.1.1/cdn-cgi/trace` (no proxy settings) shows `loc=GB`; a CN site works; a terminal tool that ignores system proxy (e.g. `curl` with no proxy env) also goes via UK; Disconnect removes the utun and routes (`netstat -rn` before/after equal). | B3.1 | not run |
+| M-IPV6 | **IPv6 bypass (TUN)**: while connected, `curl -6 -m 5 https://ipv6.google.com` fails immediately (rejected), and `sudo tcpdump -ni en0 ip6 and not icmp6` shows no public IPv6 traffic leaving the physical interface during the attempt. | B3.1 | not run |
+| M-DNSLEAK | **DNS leak (TUN, Mainland and Overseas)**: `sudo tcpdump -ni en0 'udp port 53 or tcp port 53 or port 853 or host 1.1.1.1 or host 8.8.8.8'` while `dscacheutil -flushcache; curl -s -o /dev/null https://www.google.com; curl -s -o /dev/null https://www.baidu.com`. Pass: **no** plaintext DNS and **no** traffic to 1.1.1.1 / 8.8.8.8 on en0 (proxied DoH goes through the tunnel); only TLS to 223.5.5.5 (Mainland) or 9.9.9.9 (Overseas) for direct / bootstrap lookups. Repeat in system proxy mode for reference (system DNS is visible there — expected, documented). | B3.1 | not run |
+| M-KILL | **Kill switch**: while connected in TUN mode and a download/stream is running, `sudo pkill -9 -f io.github.mosb2bls.edgeclient.sing-box`. Pass: within ~1 s `sudo pfctl -a com.apple/250.EdgeClient -s rules` shows the rules; `curl -m 5 https://www.google.com` fails fast (no direct leak); the app shows Reconnecting + kill switch; within a few seconds the core is back, the rules are gone, traffic resumes. Disconnect → no rules, `pfctl -s References` no longer lists our token. | B3.1 | not run |
+| M-TUN-FORCEKILL | **App force-quit in TUN**: connected in TUN, `pkill -9 -f target/debug/edge-app`. Pass: traffic keeps flowing (helper keeps the session); relaunch → "Re-attached to the running TUN session", Disconnect works. Also: force-quit, then `launchctl kickstart -k system/io.github.mosb2bls.edgeclient.helper` (helper restart) → helper cleans up (no utun, no pf rules); relaunch app → restore report, networking normal. | B3.1 | not run |
 | (others) | Connectivity, DNS leak, IPv6 bypass, kill switch, force-kill, quit/disconnect/direct snapshots, failover, network change — per brief §8 | B2–B4 | not run |
 
 Fault injection is compiled only into debug builds (`cfg(debug_assertions)`) and is never
@@ -100,3 +106,15 @@ which is in geosite-cn, so Rule mode sent it direct and it "passed" through a de
    restored" → diff empty.
 7. Connect, force-quit, then run `./target/debug/edge-app --restore-networking` instead of
    relaunching → prints the per-item report, exit 0 → diff empty.
+
+## 6. Helper install / TUN test steps (owner; needs your admin password)
+
+1. Build what the installer needs: `cargo build -p edge-helper && npm run fetch-core`.
+2. Start the app: `cargo run -p edge-app`. Settings → Helper → Install (or, until the UI
+   screen exists, Settings → Connection → TUN, Connect → "helper not installed" → Install).
+   macOS asks for your administrator password once.
+3. Check (read-only): `ls -l /Library/PrivilegedHelperTools/ | grep edgeclient`,
+   `ls -l /var/run/io.github.mosb2bls.edgeclient.helper.sock`,
+   `sudo launchctl print system/io.github.mosb2bls.edgeclient.helper | head -20`.
+4. Run M-TUN, M-IPV6, M-DNSLEAK, M-KILL, M-TUN-FORCEKILL from the table above.
+5. Uninstall from the app (admin prompt again) and confirm the files are gone.

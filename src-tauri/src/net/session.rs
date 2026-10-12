@@ -32,12 +32,15 @@ use crate::net::journal::{self, CoreRecord, Journal, SystemProxyRecord};
 use crate::net::logbuf;
 use crate::net::osproxy::{self, Runner};
 use crate::net::probe;
+use edge_core::helper_proto::{HelperState, TunProfile, WireDns, WireNode, WireRestoreItem, WireRouting};
 
 /// Serialises connect / disconnect / restore / mode switches.
 pub struct OpLock(pub tokio::sync::Mutex<()>);
 
 pub struct Session {
-    pub core: Arc<Mutex<CoreProcess>>,
+    /// Local core (system proxy mode); `None` when the helper runs the TUN core.
+    pub core: Option<Arc<Mutex<CoreProcess>>>,
+    pub tun: bool,
     pub api: ClashApi,
     pub mixed_port: u16,
     pub generation: u64,
@@ -133,6 +136,23 @@ fn redactor_for(configs: &[(String, NodeConfig)]) -> Redactor {
 struct SysProxyRestorer<'a> {
     runner: &'a dyn Runner,
     journal: Option<&'a Journal>,
+    /// Result of the helper's own restore (TUN sessions only).
+    helper: Option<Result<Vec<WireRestoreItem>, AppError>>,
+}
+
+fn helper_outcome(helper: &Option<Result<Vec<WireRestoreItem>, AppError>>, kind: &str) -> Option<StepOutcome> {
+    match helper.as_ref()? {
+        Err(e) => Some(StepOutcome::Skipped {
+            action: "The privileged helper could not be reached".into(),
+            code: if e.code == ErrorCode::HelperNotInstalled { ErrorCode::HelperNotInstalled } else { ErrorCode::HelperUnreachable },
+        }),
+        Ok(items) => items.iter().find(|i| i.kind == kind).map(|i| match i.result.as_str() {
+            "restored" => StepOutcome::Restored { action: i.action.clone() },
+            "not_needed" => StepOutcome::NotNeeded { action: i.action.clone() },
+            "skipped" => StepOutcome::Skipped { action: i.action.clone(), code: i.error_code.unwrap_or(ErrorCode::HelperUnreachable) },
+            _ => StepOutcome::Failed { action: i.action.clone(), code: i.error_code.unwrap_or(ErrorCode::RestoreIncomplete), detail: None },
+        }),
+    }
 }
 
 impl Restorer for SysProxyRestorer<'_> {
@@ -142,11 +162,22 @@ impl Restorer for SysProxyRestorer<'_> {
                 None => StepOutcome::NotNeeded { action: "System proxy was not changed by this app".into() },
                 Some(rec) => osproxy::restore(self.runner, &rec.services),
             },
-            RestoreItemKind::TunSession => StepOutcome::NotNeeded { action: "No TUN session (system proxy mode)".into() },
-            RestoreItemKind::Routes => StepOutcome::NotNeeded { action: "Routes were not changed".into() },
-            RestoreItemKind::Dns => StepOutcome::NotNeeded { action: "DNS settings were not changed".into() },
-            RestoreItemKind::Ipv6 => StepOutcome::NotNeeded { action: "IPv6 settings were not changed".into() },
-            RestoreItemKind::Firewall => StepOutcome::NotNeeded { action: "No firewall rules were added".into() },
+            RestoreItemKind::TunSession => helper_outcome(&self.helper, "tun_session")
+                .unwrap_or(StepOutcome::NotNeeded { action: "No TUN session".into() }),
+            RestoreItemKind::Routes => helper_outcome(&self.helper, "routes")
+                .unwrap_or(StepOutcome::NotNeeded { action: "Routes were not changed".into() }),
+            RestoreItemKind::Dns => match &self.helper {
+                Some(Ok(_)) => helper_outcome(&self.helper, "dns"),
+                _ => None,
+            }
+            .unwrap_or(StepOutcome::NotNeeded { action: "DNS settings were not changed".into() }),
+            RestoreItemKind::Ipv6 => match &self.helper {
+                Some(Ok(_)) => helper_outcome(&self.helper, "ipv6"),
+                _ => None,
+            }
+            .unwrap_or(StepOutcome::NotNeeded { action: "IPv6 settings were not changed".into() }),
+            RestoreItemKind::Firewall => helper_outcome(&self.helper, "firewall")
+                .unwrap_or(StepOutcome::NotNeeded { action: "No firewall rules were added".into() }),
         }
     }
 }
@@ -184,8 +215,13 @@ pub fn restore_all(
             return report.into();
         }
     };
+    // TUN: the helper ends its session, removes the kill switch and reports.
+    let helper = journal
+        .as_ref()
+        .filter(|j| j.tun)
+        .map(|_| crate::net::helper_client::restore().map(|(_, items)| items));
     let report: RestoreReport = restore::run_restore(
-        &mut SysProxyRestorer { runner, journal: journal.as_ref() },
+        &mut SysProxyRestorer { runner, journal: journal.as_ref(), helper },
         trigger,
         edge_core::clock::now_rfc3339(),
     )
@@ -224,6 +260,8 @@ pub fn load_last_restore(dir: &Path) -> Option<RestoreReport> {
 // ---------------------------------------------------------------------------
 
 struct Plan {
+    tun: bool,
+    kill_switch: bool,
     configs: Vec<(String, NodeConfig)>,
     selected: String,
     routing: singbox::Routing,
@@ -253,9 +291,7 @@ fn plan(app: &AppHandle) -> ApiResult<Plan> {
         let selected = st.nodes.selected_id().ok_or_else(|| AppError::new(ErrorCode::NoNodeSelected))?;
         let selected_cfg = st.nodes.config(&selected)?;
         let p = &st.prefs.prefs;
-        if p.capture_mode == CaptureMode::Tun {
-            return Err(AppError::new(ErrorCode::HelperNotInstalled));
-        }
+        let tun = p.capture_mode == CaptureMode::Tun;
         let routing = match p.routing_mode {
             RoutingMode::Rule => singbox::Routing::Rule,
             RoutingMode::Global => singbox::Routing::Global,
@@ -266,13 +302,16 @@ fn plan(app: &AppHandle) -> ApiResult<Plan> {
             nodes.iter().filter(|n| n.id != selected).filter_map(|n| st.nodes.config(&n.id).ok().map(|c| (n.id.clone(), c))).collect();
         configs.insert(0, (selected.clone(), selected_cfg));
         Ok(Plan {
+            tun,
+            kill_switch: p.safety.kill_switch,
             configs,
             selected,
             routing,
             dns: to_core_dns(p.dns_profile),
             allow_lan: p.safety.allow_lan,
             rules: RuleSets { geosite_cn: rules.geosite_cn, geoip_cn: rules.geoip_cn },
-            bin: crate::core_bin::locate_verified()?,
+            // The helper runs its own installed core in TUN mode.
+            bin: if tun { PathBuf::new() } else { crate::core_bin::locate_verified()? },
             dir: st.data_dir.clone(),
             targets: p.failover.probe_targets.clone(),
             timeout_ms: p.failover.probe_timeout_secs * 1000,
@@ -359,8 +398,13 @@ pub async fn connect(app: &AppHandle) -> ApiResult<Status> {
         }));
     }
     let p = plan(app)?;
+    if p.tun {
+        tauri::async_runtime::spawn_blocking(crate::net::helper_client::ensure_ready)
+            .await
+            .map_err(|_| AppError::new(ErrorCode::Internal))??;
+    }
     logbuf::global().set_redactor(redactor_for(&p.configs));
-    update_status(app, Some("Starting proxy core"), |s| {
+    update_status(app, Some(if p.tun { "Starting TUN (helper)" } else { "Starting proxy core" }), |s| {
         s.state = ConnectionState::Connecting;
         s.last_error = None;
     });
@@ -382,7 +426,55 @@ pub async fn connect(app: &AppHandle) -> ApiResult<Status> {
     }
 }
 
+fn tun_profile(p: &Plan) -> TunProfile {
+    TunProfile {
+        nodes: p.configs.iter().map(|(id, c)| WireNode::from_config(id, c)).collect(),
+        selected: p.selected.clone(),
+        routing: match p.routing {
+            singbox::Routing::Rule => WireRouting::Rule,
+            singbox::Routing::Global => WireRouting::Global,
+        },
+        dns: match p.dns {
+            singbox::DnsProfile::Mainland => WireDns::Mainland,
+            singbox::DnsProfile::Overseas => WireDns::Overseas,
+        },
+        allow_lan: p.allow_lan,
+        kill_switch: p.kill_switch,
+    }
+}
+
+fn api_from(state: &HelperState) -> ApiResult<ClashApi> {
+    match (state.controller_port, state.controller_secret.as_deref()) {
+        (Some(port), Some(secret)) => {
+            logbuf::global().add_secret(secret);
+            Ok(ClashApi::new(port, secret))
+        }
+        _ => Err(AppError::new(ErrorCode::CoreApiUnreachable).with_detail("helper reported no controller")),
+    }
+}
+
+fn connect_tun_blocking(app: &AppHandle, p: Plan) -> ApiResult<Status> {
+    let dir = p.dir.clone();
+    let mut j = Journal::new();
+    j.tun = true;
+    journal::save(&dir, &j)?;
+    let started = crate::net::helper_client::start(tun_profile(&p)).and_then(|st| api_from(&st));
+    let api = match started {
+        Ok(api) => api,
+        Err(e) => {
+            let report = restore_all(&dir, runner().as_ref(), RestoreTrigger::Disconnect, None);
+            with(app, |st| st.status.last_restore = Some(report.clone()));
+            let _ = RestoreReportChanged { report: report.clone() }.emit(app);
+            return Err(if report.fully_restored { e } else { AppError::restore_incomplete(report) });
+        }
+    };
+    finish_connect(app, p, None, api, 0)
+}
+
 fn connect_blocking(app: &AppHandle, p: Plan) -> ApiResult<Status> {
+    if p.tun {
+        return connect_tun_blocking(app, p);
+    }
     let dir = p.dir.clone();
     journal::save(&dir, &Journal::new())?;
     let rollback = |app: &AppHandle, core: Option<CoreProcess>, e: AppError| -> AppError {
@@ -415,11 +507,20 @@ fn connect_blocking(app: &AppHandle, p: Plan) -> ApiResult<Status> {
         return Err(rollback(app, Some(core), e));
     }
     update_status(app, Some("Running health check"), |s| s.system_proxy_set = true);
+    finish_connect(app, p, Some(core), api, mixed)
+}
+
+/// Health check, store the session, report connected / degraded, start the monitor.
+fn finish_connect(app: &AppHandle, p: Plan, core: Option<CoreProcess>, api: ClashApi, mixed: u16) -> ApiResult<Status> {
+    if p.tun {
+        update_status(app, Some("Running health check"), |s| s.tun_active = true);
+    }
     let (ok, probes) = health(&api, &p.selected, &p.targets, p.timeout_ms);
     let latency = Arc::new(Mutex::new(median(&probes)));
     let generation = next_generation();
     let session = Session {
-        core: Arc::new(Mutex::new(core)),
+        core: core.map(|c| Arc::new(Mutex::new(c))),
+        tun: p.tun,
         api,
         mixed_port: mixed,
         generation,
@@ -441,7 +542,8 @@ fn connect_blocking(app: &AppHandle, p: Plan) -> ApiResult<Status> {
         s.state = if ok { ConnectionState::Connected } else { ConnectionState::Degraded };
         s.active_node_id = Some(selected.clone());
         s.connected_since = Some(edge_core::clock::now_rfc3339());
-        s.system_proxy_set = true;
+        s.system_proxy_set = !p.tun;
+        s.tun_active = p.tun;
         s.last_error = (!ok).then(|| AppError::new(ErrorCode::ProbeFailed));
     });
     let _ = ActiveNodeChanged { previous_node_id: None, node_id: Some(p.selected.clone()), cause: NodeChangeCause::Manual }.emit(app);
@@ -473,7 +575,7 @@ async fn teardown_locked(app: &AppHandle, trigger: RestoreTrigger, end_state: Co
         system_proxy_set: st.status.system_proxy_set || journal::load(&st.data_dir).ok().flatten().is_some_and(|j| j.system_proxy.is_some()),
         tun_active: st.status.tun_active,
     });
-    let core = session.as_ref().map(|s| s.core.clone());
+    let core = session.as_ref().and_then(|s| s.core.clone());
     let report = tauri::async_runtime::spawn_blocking(move || restore_all(&dir, runner().as_ref(), trigger, core.as_ref()))
         .await
         .map_err(|_| AppError::new(ErrorCode::Internal).with_detail("restore task failed"))?;
@@ -548,7 +650,10 @@ pub async fn after_mode_change(app: &AppHandle, capture_changed: bool) -> ApiRes
 pub async fn restart_core(app: &AppHandle) -> ApiResult<()> {
     let _op = op_guard(app)?;
     let p = plan(app)?;
-    let Some((old_core, mixed, active)) =
+    if with(app, |st| st.session.as_ref().is_some_and(|s| s.tun)) {
+        return restart_tun(app, p).await;
+    }
+    let Some((Some(old_core), mixed, active)) =
         with(app, |st| st.session.as_ref().map(|s| (s.core.clone(), s.mixed_port, st.status.active_node_id.clone())))
     else {
         return Ok(());
@@ -573,7 +678,7 @@ pub async fn restart_core(app: &AppHandle) -> ApiResult<()> {
             let generation = next_generation();
             with(&app2, |st| {
                 if let Some(s) = st.session.as_mut() {
-                    s.core = Arc::new(Mutex::new(core));
+                    s.core = Some(Arc::new(Mutex::new(core)));
                     s.api = api;
                     s.generation = generation;
                     s.node_ids = p.configs.iter().map(|(id, _)| id.clone()).collect();
@@ -587,6 +692,43 @@ pub async fn restart_core(app: &AppHandle) -> ApiResult<()> {
             // System proxy still points at the (dead) local port: traffic fails
             // closed until the user disconnects or the next restart succeeds.
             update_status(app, Some("Could not restart the proxy core"), |s| {
+                s.state = ConnectionState::Error;
+                s.last_error = Some(e.clone());
+            });
+            Err(e)
+        }
+    }
+}
+
+/// TUN: the helper replaces its session with a new profile.
+async fn restart_tun(app: &AppHandle, mut p: Plan) -> ApiResult<()> {
+    if let Some(active) = with(app, |st| st.status.active_node_id.clone())
+        && p.configs.iter().any(|(id, _)| *id == active)
+    {
+        p.selected = active;
+    }
+    update_status(app, Some("Applying new settings"), |s| s.state = ConnectionState::Reconnecting);
+    let profile = tun_profile(&p);
+    let res = tauri::async_runtime::spawn_blocking(move || crate::net::helper_client::start(profile))
+        .await
+        .map_err(|_| AppError::new(ErrorCode::Internal))?
+        .and_then(|st| api_from(&st));
+    match res {
+        Ok(api) => {
+            let generation = next_generation();
+            with(app, |st| {
+                if let Some(s) = st.session.as_mut() {
+                    s.api = api;
+                    s.generation = generation;
+                    s.node_ids = p.configs.iter().map(|(id, _)| id.clone()).collect();
+                }
+            });
+            update_status(app, Some("Connected"), |s| s.state = ConnectionState::Connected);
+            spawn_monitor(app.clone(), generation, p);
+            Ok(())
+        }
+        Err(e) => {
+            update_status(app, Some("Could not restart the TUN session"), |s| {
                 s.state = ConnectionState::Error;
                 s.last_error = Some(e.clone());
             });
@@ -640,11 +782,69 @@ fn spawn_monitor(app: AppHandle, generation: u64, p: Plan) {
             }) else {
                 return; // disconnected or restarted
             };
-            if core.lock().unwrap_or_else(|e| e.into_inner()).try_wait().is_some() {
-                logbuf::app(LogLevel::Error, "sing-box exited unexpectedly");
-                crash_restart(&app, generation, &p);
-                return;
-            }
+            let api = match core {
+                Some(core) => {
+                    if core.lock().unwrap_or_else(|e| e.into_inner()).try_wait().is_some() {
+                        logbuf::app(LogLevel::Error, "sing-box exited unexpectedly");
+                        crash_restart(&app, generation, &p);
+                        return;
+                    }
+                    api
+                }
+                // TUN: the helper supervises the core (kill switch, restart);
+                // mirror its state and follow controller changes.
+                None => match crate::net::helper_client::status() {
+                    Ok(hs) => {
+                        let state = with(&app, |st| st.status.state);
+                        if hs.restarting || (!hs.running && hs.kill_switch_active) {
+                            if state != ConnectionState::Reconnecting && state != ConnectionState::Error {
+                                let msg = if hs.kill_switch_active {
+                                    "Proxy core stopped — kill switch is blocking traffic while it restarts"
+                                } else {
+                                    "Proxy core stopped — restarting"
+                                };
+                                update_status(&app, Some(msg), |s| {
+                                    s.state = if hs.restarting { ConnectionState::Reconnecting } else { ConnectionState::Error };
+                                    s.kill_switch_active = hs.kill_switch_active;
+                                    s.last_error = Some(AppError::new(ErrorCode::CoreCrashed));
+                                });
+                            }
+                            continue;
+                        }
+                        if hs.running {
+                            if state == ConnectionState::Reconnecting {
+                                update_status(&app, Some("Proxy core restarted"), |s| {
+                                    s.state = ConnectionState::Connected;
+                                    s.kill_switch_active = false;
+                                    s.last_error = None;
+                                });
+                            }
+                            match api_from(&hs) {
+                                Ok(fresh) => {
+                                    with(&app, |st| {
+                                        if let Some(s) = st.session.as_mut() {
+                                            s.api = fresh.clone();
+                                        }
+                                    });
+                                    fresh
+                                }
+                                Err(_) => api,
+                            }
+                        } else {
+                            api
+                        }
+                    }
+                    Err(e) => {
+                        if with(&app, |st| st.status.state) != ConnectionState::Error {
+                            update_status(&app, Some("The privileged helper is not responding"), |s| {
+                                s.state = ConnectionState::Error;
+                                s.last_error = Some(e.clone());
+                            });
+                        }
+                        continue;
+                    }
+                },
+            };
             if let Ok((up, down, conns)) = api.totals() {
                 let now = Instant::now();
                 let (bu, bd) = *base.get_or_insert((up, down));
@@ -724,7 +924,7 @@ fn crash_restart(app: &AppHandle, generation: u64, p: &Plan) {
                     let new_gen = next_generation();
                     with(app, |st| {
                         if let Some(s) = st.session.as_mut() {
-                            s.core = Arc::new(Mutex::new(core));
+                            s.core = Some(Arc::new(Mutex::new(core)));
                             s.api = api;
                             s.generation = new_gen;
                         }
@@ -761,6 +961,8 @@ fn crash_restart(app: &AppHandle, generation: u64, p: &Plan) {
 
 fn clone_plan(p: &Plan) -> Plan {
     Plan {
+        tun: p.tun,
+        kill_switch: p.kill_switch,
         configs: p.configs.clone(),
         selected: p.selected.clone(),
         routing: p.routing,
@@ -794,6 +996,9 @@ pub fn recover_at_launch(app: &AppHandle) {
             Ok(g) => g,
             Err(_) => return,
         };
+        if reattach_tun(&app, &dir).await {
+            return;
+        }
         update_status(&app, Some("Restoring network settings from the previous session"), |s| {
             s.state = ConnectionState::Recovering;
             s.system_proxy_set = true;
@@ -824,6 +1029,48 @@ pub fn recover_at_launch(app: &AppHandle) {
         let _ = RecoveryCompleted { report: recovery }.emit(&app);
         let _ = RestoreReportChanged { report }.emit(&app);
     });
+}
+
+/// TUN session still running in the helper after an app crash / restart:
+/// re-attach instead of restoring. Returns true if re-attached.
+async fn reattach_tun(app: &AppHandle, dir: &Path) -> bool {
+    let tun = journal::load(dir).ok().flatten().is_some_and(|j| j.tun);
+    if !tun {
+        return false;
+    }
+    let hs = match tauri::async_runtime::spawn_blocking(crate::net::helper_client::status).await {
+        Ok(Ok(hs)) if hs.running => hs,
+        _ => return false,
+    };
+    let Ok(api) = api_from(&hs) else { return false };
+    let Ok(p) = plan(app) else { return false };
+    let selected = hs.selected.clone().unwrap_or_else(|| p.selected.clone());
+    logbuf::global().set_redactor(redactor_for(&p.configs));
+    let generation = next_generation();
+    with(app, |st| {
+        st.session = Some(Session {
+            core: None,
+            tun: true,
+            api,
+            mixed_port: 0,
+            generation,
+            exe: PathBuf::new(),
+            node_ids: p.configs.iter().map(|(id, _)| id.clone()).collect(),
+            latency_ms: Arc::new(Mutex::new(None)),
+        })
+    });
+    let recovery = RecoveryReport { outcome: RecoveryOutcome::Reattached, at: edge_core::clock::now_rfc3339(), restore: None };
+    update_status(app, Some("Re-attached to the running TUN session"), |s| {
+        s.state = ConnectionState::Connected;
+        s.tun_active = true;
+        s.kill_switch_active = hs.kill_switch_active;
+        s.active_node_id = Some(selected.clone());
+        s.connected_since = Some(edge_core::clock::now_rfc3339());
+        s.last_recovery = Some(recovery.clone());
+    });
+    let _ = RecoveryCompleted { report: recovery }.emit(app);
+    spawn_monitor(app.clone(), generation, p);
+    true
 }
 
 /// Data directory without Tauri (for `--restore-networking`): same location

@@ -447,27 +447,38 @@ pub async fn update_rules_now() -> ApiResult<RulesStatus> {
 #[tauri::command]
 #[specta::specta]
 pub async fn get_helper_status() -> ApiResult<HelperStatus> {
-    Ok(HelperStatus {
-        installed: false,
-        running: false,
-        version: None,
-        expected_version: env!("CARGO_PKG_VERSION").into(),
-        needs_upgrade: false,
-    })
+    tauri::async_runtime::spawn_blocking(crate::net::helper_client::dto)
+        .await
+        .map_err(|_| AppError::new(ErrorCode::Internal))
+}
+
+fn emit_helper(app: &AppHandle, status: &HelperStatus) {
+    let _ = super::events::HelperStatusChanged { status: status.clone() }.emit(app);
 }
 
 /// Shows the OS admin prompt (macOS) / UAC prompt (Windows).
 #[tauri::command]
 #[specta::specta]
-pub async fn install_helper() -> ApiResult<HelperStatus> {
-    Err(AppError::not_implemented("install_helper"))
+pub async fn install_helper(app: AppHandle) -> ApiResult<HelperStatus> {
+    let st = tauri::async_runtime::spawn_blocking(crate::net::helper_client::install)
+        .await
+        .map_err(|_| AppError::new(ErrorCode::Internal))??;
+    emit_helper(&app, &st);
+    Ok(st)
 }
 
 /// Shows the OS admin prompt (macOS) / UAC prompt (Windows).
 #[tauri::command]
 #[specta::specta]
-pub async fn uninstall_helper() -> ApiResult<HelperStatus> {
-    Err(AppError::not_implemented("uninstall_helper"))
+pub async fn uninstall_helper(app: AppHandle) -> ApiResult<HelperStatus> {
+    if with_state(&app, |st| Ok(st.session.as_ref().is_some_and(|s| s.tun)))? {
+        return Err(AppError::new(ErrorCode::Busy).with_detail("disconnect the TUN session first"));
+    }
+    let st = tauri::async_runtime::spawn_blocking(crate::net::helper_client::uninstall)
+        .await
+        .map_err(|_| AppError::new(ErrorCode::Internal))??;
+    emit_helper(&app, &st);
+    Ok(st)
 }
 
 // ---------------------------------------------------------------------------

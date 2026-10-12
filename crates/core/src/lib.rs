@@ -18,7 +18,9 @@ pub const APP_IDENTIFIER: &str = "io.github.mosb2bls.edgeclient";
 
 pub mod clock;
 pub mod error_code;
+pub mod helper_proto;
 pub mod link;
+pub mod pf;
 pub mod qr;
 pub mod redact;
 pub mod restore;

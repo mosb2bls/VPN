@@ -154,6 +154,7 @@
     }
   ],
   "route": {
+    "auto_detect_interface": false,
     "default_domain_resolver": "dns-bootstrap",
     "final": "proxy",
     "rule_set": [

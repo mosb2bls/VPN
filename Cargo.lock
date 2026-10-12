@@ -982,6 +982,7 @@ dependencies = [
  "base64 0.22.1",
  "edge-core",
  "keyring-core",
+ "libc",
  "percent-encoding",
  "serde",
  "serde_json",
@@ -1031,6 +1032,12 @@ name = "edge-helper"
 version = "0.1.0"
 dependencies = [
  "edge-core",
+ "libc",
+ "serde",
+ "serde_json",
+ "sha2",
+ "ureq",
+ "uuid",
 ]
 
 [[package]]
