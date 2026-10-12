@@ -19,5 +19,19 @@ fn main() {
     println!("cargo:rustc-env=EDGE_SINGBOX_SHA256={hash}");
     println!("cargo:rustc-env=EDGE_TARGET_TRIPLE={target}");
 
-    tauri_build::build()
+    // Windows: tauri-build embeds its manifest only into the app binary; unit-test
+    // binaries then fail to load (STATUS_ENTRYPOINT_NOT_FOUND). Embed the same
+    // manifest ourselves for every target of this package instead.
+    let mut attrs = tauri_build::Attributes::new();
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
+        && std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc")
+    {
+        let manifest = std::path::Path::new(&std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"))
+            .join("windows-app-manifest.xml");
+        println!("cargo:rerun-if-changed={}", manifest.display());
+        println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+        println!("cargo:rustc-link-arg=/MANIFESTINPUT:{}", manifest.display());
+        attrs = attrs.windows_attributes(tauri_build::WindowsAttributes::new_without_app_manifest());
+    }
+    tauri_build::try_build(attrs).expect("tauri-build")
 }

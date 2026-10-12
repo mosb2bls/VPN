@@ -1,0 +1,18 @@
+<!-- Same content as tauri-build's default manifest (Common Controls v6, needed by
+     Tauri's Windows dialogs). Embedded by build.rs into every Windows target of this
+     package — including unit-test binaries, which otherwise fail to load with
+     STATUS_ENTRYPOINT_NOT_FOUND (TaskDialogIndirect is only in comctl32 v6). -->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity
+        type="win32"
+        name="Microsoft.Windows.Common-Controls"
+        version="6.0.0.0"
+        processorArchitecture="*"
+        publicKeyToken="6595b64144ccf1df"
+        language="*"
+      />
+    </dependentAssembly>
+  </dependency>
+</assembly>
