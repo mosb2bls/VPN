@@ -164,10 +164,12 @@ fn applescript_string(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
-/// Run `argv` as root via the macOS administrator prompt.
+/// Run `argv` as root via the macOS administrator prompt. `cd /` first: the
+/// root shell inherits our working directory, which may be in a privacy-
+/// protected folder (Desktop / Documents / Downloads) it cannot access.
 #[cfg(target_os = "macos")]
 fn run_as_admin(argv: &[String], fail: ErrorCode) -> ApiResult<()> {
-    let cmd = argv.iter().map(|a| sh_quote(a)).collect::<Vec<_>>().join(" ");
+    let cmd = format!("cd / && {}", argv.iter().map(|a| sh_quote(a)).collect::<Vec<_>>().join(" "));
     let script = format!(
         "do shell script \"{}\" with prompt \"{} wants to install or remove its network helper.\" with administrator privileges",
         applescript_string(&cmd),
@@ -188,25 +190,51 @@ fn run_as_admin(argv: &[String], fail: ErrorCode) -> ApiResult<()> {
     }
 }
 
+/// Copy what the root installer reads into a private temp folder (0700).
+/// macOS privacy protection (TCC) blocks the root process behind the admin
+/// prompt from reading files in Desktop / Documents / Downloads — where a dev
+/// checkout or a downloaded app may live. The installer still verifies
+/// sing-box and the rule-sets against the hashes embedded in the helper.
+#[cfg(target_os = "macos")]
+fn stage_for_install(helper: &Path, singbox: &Path, rules: &Path) -> std::io::Result<PathBuf> {
+    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+    let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let dir = std::env::temp_dir().join(format!("{}-helper-install-{}-{nonce}", edge_core::APP_SLUG, std::process::id()));
+    std::fs::DirBuilder::new().mode(0o700).create(&dir)?;
+    std::fs::DirBuilder::new().mode(0o700).create(dir.join("rules"))?;
+    for (src, name) in [(helper, "edge-helper"), (singbox, "sing-box")] {
+        std::fs::copy(src, dir.join(name))?;
+        std::fs::set_permissions(dir.join(name), std::fs::Permissions::from_mode(0o700))?;
+    }
+    for name in ["geosite-cn.srs", "geoip-cn.srs"] {
+        std::fs::copy(rules.join(name), dir.join("rules").join(name))?;
+    }
+    Ok(dir)
+}
+
 #[cfg(target_os = "macos")]
 pub fn install(resource_dir: Option<PathBuf>) -> ApiResult<HelperStatus> {
     let helper = bundled_helper()?;
     let singbox = crate::core_bin::locate_verified()?;
     let rules = crate::rules::bundled_dir(resource_dir);
     let uid = unsafe { libc::getuid() };
-    run_as_admin(
+    let stage = stage_for_install(&helper, &singbox, &rules)
+        .map_err(|e| AppError::new(ErrorCode::HelperInstallFailed).with_detail(format!("staging the helper files: {e}")))?;
+    let result = run_as_admin(
         &[
-            helper.to_string_lossy().into_owned(),
+            stage.join("edge-helper").to_string_lossy().into_owned(),
             "install".into(),
             "--uid".into(),
             uid.to_string(),
             "--sing-box".into(),
-            singbox.to_string_lossy().into_owned(),
+            stage.join("sing-box").to_string_lossy().into_owned(),
             "--rules".into(),
-            rules.to_string_lossy().into_owned(),
+            stage.join("rules").to_string_lossy().into_owned(),
         ],
         ErrorCode::HelperInstallFailed,
-    )?;
+    );
+    let _ = std::fs::remove_dir_all(&stage);
+    result?;
     for _ in 0..50 {
         if status().is_ok() {
             break;
