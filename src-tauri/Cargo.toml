@@ -39,9 +39,16 @@ tauri-plugin-single-instance = "2"
 zip = { version = "9", default-features = false, features = ["deflate"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+# Tray icons: decode the 44 px template PNGs; size the menu-bar image to 22 pt.
+png = "0.17"
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSGeometry"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSStatusItem", "NSStatusBarButton", "NSButton", "NSControl", "NSView", "NSResponder", "NSImage"] }
 apple-native-keyring-store = { version = "1", features = ["keychain"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
+# Tray icons: pick the 16/20/24/32 px frame of the tray ICOs.
+ico = "0.5"
 edge-winsys = { path = "../crates/winsys" }
 windows-native-keyring-store = { version = "1", default-features = false }
 

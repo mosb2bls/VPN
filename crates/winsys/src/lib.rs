@@ -26,6 +26,8 @@ pub mod service;
 #[cfg(windows)]
 pub mod startup;
 #[cfg(windows)]
+pub mod ui;
+#[cfg(windows)]
 pub mod wfp;
 
 /// Read a NUL-terminated wide string (not freed).

@@ -497,6 +497,23 @@ The single-instance plugin's message window (`…edgeclient-siw`) reports as "vi
 15×15 at 0,0. That is by design: it's layered, transparent and a tool window, so nothing is
 drawn (round 1, M-3). Only report it if something actually shows in the top-left corner.
 
+### Tray icons (macOS and Windows, SPEC 1.5.3)
+
+**Pass:**
+- The app icon is the cat on a white tile in Finder / Dock (macOS) and in Explorer, Start
+  and the taskbar (Windows).
+- The tray / menu bar never shows the white tile; it shows the state icons: hollow circle =
+  Off, two dots = Connecting (pulsing; static if reduced motion / "Animation effects" is
+  off), solid circle = Connected, short bar = Connection unavailable.
+- Tooltips: `Lynnk — Off`, `Lynnk — Connecting`, `Lynnk — Connected`,
+  `Lynnk — Connection unavailable`.
+- Switching HY2 ↔ REALITY or Rule ↔ Global doesn't change the icon.
+- The animation stops as soon as the state changes.
+- Eye openings and background stay transparent:
+  - macOS: light and dark menu bar, the icon follows the menu-bar colour;
+  - Windows: light and dark taskbar (Settings → Personalization → Colors), the icon switches
+    black ↔ white within ~2 s, and is sharp at 100 / 125 / 150 / 200 %.
+
 ### W-SHELL — tray popover position, display scaling, Settings title bar
 
 Windows 11 keeps the taskbar at the bottom.

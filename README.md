@@ -1,5 +1,7 @@
 # Lynnk
 
+<img src="src-tauri/icons/icon.svg" width="96" alt="Lynnk icon">
+
 Personal desktop proxy client (macOS Apple Silicon, Windows x64) for a single self-hosted
 server: Hysteria 2 (primary) and VLESS + REALITY + XTLS Vision (fallback), using the
 [sing-box](https://github.com/SagerNet/sing-box) core (pinned, checksum-verified).

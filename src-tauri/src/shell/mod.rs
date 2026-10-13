@@ -3,6 +3,7 @@
 //! destroyed (close = hide), so their event listeners stay attached.
 
 pub mod position;
+mod trayicon;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -94,11 +95,8 @@ pub fn setup(app: &mut tauri::App) -> tauri::Result<()> {
         });
     }
 
-    let icon = app.default_window_icon().cloned().ok_or_else(|| {
-        tauri::Error::AssetNotFound("default window icon (tray)".into())
-    })?;
-    TrayIconBuilder::with_id(TRAY_ID)
-        .icon(icon)
+    // State icons (trayicon.rs), never the app tile; applied right after build.
+    let tray = TrayIconBuilder::with_id(TRAY_ID)
         .tooltip(edge_core::APP_NAME)
         .menu(&build_menu(&handle)?)
         .show_menu_on_left_click(false)
@@ -115,6 +113,9 @@ pub fn setup(app: &mut tauri::App) -> tauri::Result<()> {
             }
         })
         .build(app)?;
+    let status = app.state::<AppState>().lock().unwrap_or_else(|p| p.into_inner()).status.clone();
+    trayicon::apply(&handle, &tray, &status);
+    trayicon::start_theme_watch(&handle);
     Ok(())
 }
 
@@ -311,11 +312,12 @@ fn build_menu(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
 /// Rebuild the tray menu from current state. Must be called without holding
 /// the `AppState` lock.
 pub fn refresh_tray(app: &AppHandle) {
-    if let Some(tray) = app.tray_by_id(TRAY_ID)
-        && let Ok(menu) = build_menu(app)
-    {
+    let Some(tray) = app.tray_by_id(TRAY_ID) else { return };
+    if let Ok(menu) = build_menu(app) {
         let _ = tray.set_menu(Some(menu));
     }
+    let status = app.state::<AppState>().lock().unwrap_or_else(|p| p.into_inner()).status.clone();
+    trayicon::apply(app, &tray, &status);
 }
 
 fn on_menu(app: &AppHandle, id: &str) {
