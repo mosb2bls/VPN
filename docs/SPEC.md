@@ -1,6 +1,6 @@
 # Lynnk — Backend ↔ UI Interface Specification
 
-**Spec version:** 1.5.0
+**Spec version:** 1.5.1
 **Status:** approved; includes REQ-1 to REQ-4 (Phase B1). "1.0.0" marks a breaking change, not feature completeness — most commands are still stubs.
 **Generated bindings:** `src/api/bindings.ts` (from `src-tauri/src/api/*`, via tauri-specta `=2.0.0-rc.25`)
 
@@ -12,6 +12,7 @@ the disagreement is a backend bug — file a REQ.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.5.1 | 2026-10-13 | **Behaviour (Windows round 2):** Windows helper verification uses the Service Control Manager (pipe server PID = our service's PID, service command line = the installed binary) — TUN works for normal users (F-3; was `HELPER_AUTH_FAILED`). `get_helper_status.needsUpgrade` is also true when the installed helper binary differs from the one shipped with the app (same version number, other build — e.g. after an app upgrade or a dev rebuild), also when it is not running (O-1). Windows popover has its configured 340 × 480 size before the first show (O-2). New diagnostics flag `--helper-status` (no UI; one line; exit 0 = helper running and verified). No type changes. |
 | 1.5.0 | 2026-10-13 | **Windows round-1 fixes + Settings title bar.** (1) **Windows: the `settings` window has no native title bar** (owner request E-1): the UI draws its own and uses the window API — newly granted to the `settings` window: `core:window:allow-start-dragging` (`data-tauri-drag-region`), `allow-minimize`, `allow-toggle-maximize`, `allow-close` (close → hides, as before), `allow-is-maximized`. macOS unchanged (native title bar). (2) Windows helper pipe now opens (F-1: TUN works again — was `HELPER_UNREACHABLE` "Access is denied"). (3) `get_settings.launchAtLogin` on Windows is false if the login item is disabled in Task Manager; turning it on or off in the app clears Task Manager's record (M-2). (4) Windows installer publisher "Lynnk" (M-1). No type changes. |
 | 1.4.4 | 2026-10-12 | **Behaviour:** product renamed to **Lynnk** (owner decision): `getAppInfo().appName`, window titles ("Lynnk", "Lynnk Settings"), tray tooltip / menu ("Quit Lynnk"), diagnostics file name, macOS admin prompt text ("Lynnk wants to install or remove its network helper."), Windows install folders (`%LOCALAPPDATA%\Lynnk`, `%ProgramFiles%\Lynnk\Helper`, `%ProgramData%\Lynnk\Helper`), service display name "Lynnk Helper". Unchanged: identifier `io.github.mosb2bls.edgeclient` (keychain, data dirs, helper paths on macOS, Windows service name), pf anchor. No type changes. |
 | 1.4.3 | 2026-10-12 | **Behaviour:** single instance — launching the app while it runs (e.g. Start menu while the login item runs) opens the running app's Settings window instead of a second instance. Windows uninstaller first restores networking (`--restore-networking`) and removes the TUN helper service if installed (one UAC prompt). No type changes. |
@@ -259,7 +260,7 @@ attempt, scheduled or manual, is also emitted as `rulesUpdated`.
 
 | Command | Params | Returns | Errors | Elevation | B1 |
 |---|---|---|---|---|---|
-| `get_helper_status` | — | `HelperStatus` | — | no | **real** (`running` = socket answers; `needsUpgrade` = version / protocol / core hash differs) |
+| `get_helper_status` | — | `HelperStatus` | — | no | **real** (`running` = socket answers; `needsUpgrade` = version / protocol / core hash differs, or the installed helper binary differs from the bundled one) |
 | `install_helper` | — | `HelperStatus` | `HELPER_INSTALL_CANCELLED`, `HELPER_INSTALL_FAILED`, `CORE_*`, `RULES_*` | **yes** — macOS admin password prompt / Windows UAC | **real (macOS)**; Windows implemented, **untested** |
 | `uninstall_helper` | — | `HelperStatus` | `BUSY` (TUN connected), `HELPER_INSTALL_CANCELLED`, `HELPER_UNINSTALL_FAILED` | **yes** | **real (macOS)** |
 

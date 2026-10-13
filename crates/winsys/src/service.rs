@@ -107,6 +107,51 @@ pub fn remove(name: &str) -> Result<bool, String> {
     Ok(true)
 }
 
+/// PID of the service's process if it is running. Needs only
+/// SERVICE_QUERY_STATUS, which interactive users have by default.
+pub fn running_pid(name: &str) -> Option<u32> {
+    let m = scm(SC_MANAGER_CONNECT).ok()?;
+    let n = wide(name);
+    let svc = Handle(unsafe { OpenServiceW(m.0, n.as_ptr(), SERVICE_QUERY_STATUS) });
+    if svc.0.is_null() {
+        return None;
+    }
+    let mut st: SERVICE_STATUS_PROCESS = unsafe { std::mem::zeroed() };
+    let mut needed = 0u32;
+    let ok = unsafe {
+        QueryServiceStatusEx(
+            svc.0,
+            SC_STATUS_PROCESS_INFO,
+            &mut st as *mut _ as *mut u8,
+            std::mem::size_of::<SERVICE_STATUS_PROCESS>() as u32,
+            &mut needed,
+        )
+    };
+    (ok != 0 && st.dwCurrentState == SERVICE_RUNNING && st.dwProcessId != 0).then_some(st.dwProcessId)
+}
+
+/// The service's configured command line. Needs only SERVICE_QUERY_CONFIG
+/// (interactive users have it); only administrators can change it.
+pub fn command_line(name: &str) -> Option<String> {
+    let m = scm(SC_MANAGER_CONNECT).ok()?;
+    let n = wide(name);
+    let svc = Handle(unsafe { OpenServiceW(m.0, n.as_ptr(), SERVICE_QUERY_CONFIG) });
+    if svc.0.is_null() {
+        return None;
+    }
+    let mut needed = 0u32;
+    unsafe { QueryServiceConfigW(svc.0, std::ptr::null_mut(), 0, &mut needed) };
+    if needed == 0 {
+        return None;
+    }
+    let mut buf = vec![0u64; (needed as usize).div_ceil(8)];
+    let cfg = buf.as_mut_ptr() as *mut QUERY_SERVICE_CONFIGW;
+    if unsafe { QueryServiceConfigW(svc.0, cfg, needed, &mut needed) } == 0 {
+        return None;
+    }
+    Some(unsafe { crate::wide_to_string((*cfg).lpBinaryPathName) })
+}
+
 // --- dispatcher -------------------------------------------------------------
 
 static NAME: OnceLock<Vec<u16>> = OnceLock::new();

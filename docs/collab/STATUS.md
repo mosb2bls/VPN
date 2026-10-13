@@ -7,7 +7,9 @@ Each agent edits only its own section.
 - **Phase/step:** Windows test loop (B3.2 done, untested parts being tested by the Windows
   tester). Round 1 (`0e336ca`): 9 pass, F-1 (pipe access denied, blocked all TUN) fixed in
   SPEC 1.5.0 together with M-1, M-2, E-1 (Windows title bar) and checklist issues 1–9.
-- **SPEC version:** 1.5.0
+- **SPEC version:** 1.5.1 (round 2: F-3 helper verification via SCM, O-1 needsUpgrade on a
+  different helper build, O-2 popover size; Windows CI now installs the real helper service
+  end to end)
 - **Real:** nodes, settings, system proxy mode (macOS), TUN mode via helper (macOS),
   helper status / install / uninstall (macOS, admin prompt), live node switch, test_node,
   logs, launch recovery (restore or TUN re-attach), `--restore-networking`, windows + tray,

@@ -30,6 +30,11 @@ pub fn helper_exe() -> PathBuf {
     install_dir().join("edge-helper.exe")
 }
 
+/// The service command line the installer registers (and the app expects).
+pub fn helper_service_command() -> String {
+    format!("{} serve", crate::quote_arg(&helper_exe().to_string_lossy()))
+}
+
 pub fn singbox_exe() -> PathBuf {
     install_dir().join("sing-box.exe")
 }

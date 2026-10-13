@@ -42,6 +42,13 @@ pub fn setup(app: &mut tauri::App) -> tauri::Result<()> {
     let handle = app.handle().clone();
     if let Some(w) = handle.get_webview_window(POPOVER) {
         let _ = w.set_title(edge_core::APP_NAME);
+        // Windows: a hidden undecorated window reports a smaller inner size until
+        // first shown (340×452 instead of 340×480, round 2 O-2), which would place
+        // the first popover too low. Apply the configured size explicitly.
+        #[cfg(windows)]
+        if let Some(c) = handle.config().app.windows.iter().find(|c| c.label == POPOVER) {
+            let _ = w.set_size(tauri::LogicalSize::new(c.width, c.height));
+        }
         let h = handle.clone();
         let win = w.clone();
         w.on_window_event(move |e| match e {

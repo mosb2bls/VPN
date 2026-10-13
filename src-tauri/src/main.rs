@@ -5,5 +5,8 @@ fn main() {
     if std::env::args().any(|a| a == "--restore-networking") {
         std::process::exit(edge_app_lib::restore_networking_cli());
     }
+    if std::env::args().any(|a| a == "--helper-status") {
+        std::process::exit(edge_app_lib::helper_status_cli());
+    }
     edge_app_lib::run()
 }

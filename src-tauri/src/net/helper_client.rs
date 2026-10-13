@@ -54,11 +54,20 @@ pub fn request(req: &Request, timeout: Duration) -> ApiResult<Response> {
 pub fn request(req: &Request, timeout: Duration) -> ApiResult<Response> {
     use std::io::{BufRead, BufReader, Write};
     let f = edge_winsys::pipe::connect(WIN_PIPE_NAME, Duration::from_secs(3)).map_err(|e| unreachable(e.to_string()))?;
-    // Talk only to the installed service binary, never to a process that
-    // grabbed the pipe name first.
-    let server = edge_winsys::pipe::server_pid(&f).and_then(edge_winsys::process::image_path);
-    if !server.as_deref().is_some_and(|p| edge_winsys::paths::same_path(p, &edge_winsys::paths::helper_exe())) {
-        return Err(AppError::new(ErrorCode::HelperAuthFailed).with_detail("pipe server is not the installed helper"));
+    // Talk only to our service, never to a process that grabbed the pipe name
+    // first: the pipe server's PID must be the PID the Service Control Manager
+    // reports for our service, and the service must be configured to run our
+    // installed binary (only administrators can change that). A normal user
+    // cannot open the SYSTEM process itself (round 2, F-3).
+    use edge_winsys::service;
+    let server = edge_winsys::pipe::server_pid(&f);
+    let service_pid = service::running_pid(WIN_SERVICE_NAME);
+    if server.is_none() || server != service_pid {
+        return Err(AppError::new(ErrorCode::HelperAuthFailed).with_detail("pipe server is not the helper service's process"));
+    }
+    let expected = edge_winsys::paths::helper_service_command();
+    if !service::command_line(WIN_SERVICE_NAME).is_some_and(|c| c.trim().eq_ignore_ascii_case(&expected)) {
+        return Err(AppError::new(ErrorCode::HelperAuthFailed).with_detail("the helper service does not run the installed helper binary"));
     }
     let mut line = serde_json::to_string(req).expect("request serializes");
     line.push('\n');
@@ -133,12 +142,57 @@ pub fn dto() -> HelperStatus {
             running: true,
             needs_upgrade: st.version != expected
                 || st.protocol != PROTOCOL_VERSION
-                || st.core_sha256 != crate::core_bin::expected_sha256(),
+                || st.core_sha256 != crate::core_bin::expected_sha256()
+                || installed_binary_differs(),
             version: Some(st.version),
             expected_version: expected,
         },
-        (installed, Err(_)) => HelperStatus { installed, running: false, version: None, expected_version: expected, needs_upgrade: false },
+        (installed, Err(_)) => HelperStatus {
+            installed,
+            running: false,
+            version: None,
+            expected_version: expected,
+            needs_upgrade: installed && installed_binary_differs(),
+        },
     }
+}
+
+/// The installed helper binary is not the one shipped with this app (e.g. the
+/// app was upgraded but the helper was not — same version number, older build;
+/// round 2, O-1). Compares SHA-256 of both files; cached by size + mtime.
+fn installed_binary_differs() -> bool {
+    #[cfg(target_os = "macos")]
+    let installed = PathBuf::from(HELPER_BIN);
+    #[cfg(windows)]
+    let installed = edge_winsys::paths::helper_exe();
+    #[cfg(not(any(target_os = "macos", windows)))]
+    return false;
+    #[cfg(any(target_os = "macos", windows))]
+    {
+        let Ok(bundled) = bundled_helper() else { return false };
+        match (file_sha256_cached(&bundled), file_sha256_cached(&installed)) {
+            (Some(a), Some(b)) => a != b,
+            _ => false,
+        }
+    }
+}
+
+#[cfg(any(target_os = "macos", windows))]
+fn file_sha256_cached(path: &Path) -> Option<String> {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    type Key = (PathBuf, u64, Option<std::time::SystemTime>);
+    static CACHE: OnceLock<Mutex<HashMap<Key, String>>> = OnceLock::new();
+    let meta = std::fs::metadata(path).ok()?;
+    let key = (path.to_path_buf(), meta.len(), meta.modified().ok());
+    let cache = CACHE.get_or_init(Default::default);
+    if let Some(h) = cache.lock().ok()?.get(&key) {
+        return Some(h.clone());
+    }
+    let bytes = std::fs::read(path).ok()?;
+    let h = crate::rules::sha256_hex(&bytes);
+    cache.lock().ok()?.insert(key, h.clone());
+    Some(h)
 }
 
 /// Helper binary shipped with the app (dev: `target/<profile>/edge-helper`).

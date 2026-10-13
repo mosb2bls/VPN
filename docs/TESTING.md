@@ -212,6 +212,14 @@ legitimately differ.
    - the "delete app data" box decides whether `%APPDATA%\io.github.mosb2bls.edgeclient` and
      `%LOCALAPPDATA%\io.github.mosb2bls.edgeclient` (node list, settings, logs) survive.
      Note which. The keychain entry (Windows Credential Manager) is separate.
+3b. **Upgrade over an existing install** (with the helper installed): run the newer
+   installer without uninstalling first. **Pass:**
+   - no UAC prompt;
+   - the app starts;
+   - the Helper page shows **Reinstall helper** (the installed helper is the older build);
+   - `& $App.FullName --helper-status` → `needs_upgrade=true`.
+
+   Reinstall. **Pass:** `needs_upgrade=false`, `running=true`.
 4. Reinstall, then install the helper (W-HELPER), connect in **TUN** and uninstall the app
    while connected. **Pass:**
    - exactly **one** UAC prompt (helper removal), which you accept;
@@ -241,6 +249,11 @@ this mode. This is documented; use TUN for whole-device protection.
 
 ### W-HELPER — helper service (UAC)
 
+Before step 1: if an **older** helper is installed (e.g. after upgrading the app), the Helper
+page shows **Reinstall helper** (`needsUpgrade`, SPEC 1.5.1). Use it, or Uninstall then
+Install, so the tests run on this build's helper. At any point,
+`& $App.FullName --helper-status` prints one line
+(`installed=… running=… version=… needs_upgrade=…`, plus `error=… detail=…` if unusable).
 1. Settings → capture mode TUN → Install helper. Cancel the UAC prompt first.
    **Pass:** "cancelled" is shown, and `Get-Service $Svc -ErrorAction SilentlyContinue` → nothing.
 2. Install again and accept. **Pass:**

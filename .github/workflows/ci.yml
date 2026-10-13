@@ -54,6 +54,26 @@ jobs:
         run: npm run lint
       - name: TypeScript check
         run: npx tsc --noEmit -p .
+      - name: Windows helper service end to end (install, verify from the app, uninstall)
+        if: runner.os == 'Windows'
+        shell: powershell
+        # The runner is elevated, so the installer runs without UAC. This checks the
+        # real service + pipe + the app's SCM-based server verification (round 2,
+        # F-3). It cannot reproduce a non-elevated user's process-access denial.
+        run: |
+          cargo build -p edge-helper -p edge-app
+          if ($LASTEXITCODE) { exit 1 }
+          $sid = ([Security.Principal.WindowsIdentity]::GetCurrent()).User.Value
+          $sb = (Get-ChildItem src-tauri\binaries -Filter 'sing-box-*.exe' | Select-Object -First 1).FullName
+          & target\debug\edge-helper.exe install --sid $sid --sing-box $sb --rules resources\rules
+          if ($LASTEXITCODE) { exit 1 }
+          Start-Sleep -Seconds 3
+          & target\debug\edge-app.exe --helper-status
+          $ok = $LASTEXITCODE
+          & target\debug\edge-helper.exe uninstall
+          $un = $LASTEXITCODE
+          if (Get-Service io.github.mosb2bls.edgeclient.helper -ErrorAction SilentlyContinue) { Write-Output 'service still present'; exit 1 }
+          if ($ok -ne 0 -or $un -ne 0) { exit 1 }
       - name: Windows test scripts run (snapshot + compare, exit check)
         if: runner.os == 'Windows'
         shell: powershell

@@ -81,3 +81,22 @@ fn load_state(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 pub fn restore_networking_cli() -> i32 {
     net::session::restore_cli()
 }
+
+/// `--helper-status` (diagnostics, no UI): one line `installed=… running=… version=…
+/// needs_upgrade=…` plus the error code / detail if the helper cannot be used.
+/// Exit 0 if the helper is running and verified, 1 otherwise. Used by Windows CI's
+/// end-to-end service test and by testers.
+pub fn helper_status_cli() -> i32 {
+    let st = net::helper_client::dto();
+    println!(
+        "installed={} running={} version={} needs_upgrade={}",
+        st.installed,
+        st.running,
+        st.version.as_deref().unwrap_or("-"),
+        st.needs_upgrade
+    );
+    if let Err(e) = net::helper_client::status() {
+        println!("error={:?} detail={}", e.code, e.detail.unwrap_or_default());
+    }
+    if st.running { 0 } else { 1 }
+}

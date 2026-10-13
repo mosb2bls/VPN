@@ -57,7 +57,7 @@ pub fn install(sid: &str, singbox: &Path, rules_dir: &Path) -> Result<(), String
     session::verified_rules().map_err(|(c, d)| format!("rules: {c:?} {}", d.unwrap_or_default()))?;
     let cfg = serde_json::json!({ "allowedSid": sid });
     util::write_private(&data.join("helper.json"), cfg.to_string().as_bytes()).map_err(|e| e.to_string())?;
-    let cmd = format!("{} serve", edge_winsys::quote_arg(&paths::helper_exe().to_string_lossy()));
+    let cmd = paths::helper_service_command();
     service::install(
         WIN_SERVICE_NAME,
         WIN_SERVICE_DISPLAY,
