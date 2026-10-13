@@ -119,7 +119,9 @@ pub fn server_pid(f: &File) -> Option<u32> {
 }
 
 /// Real pipe with the helper's DACL, opened by the current (non-SYSTEM) user —
-/// the round-1 F-1 regression test. Runs on the Windows CI runner.
+/// the round-1 F-1 regression test. Runs on the Windows CI runner. One pipe
+/// instance only: the DACL deliberately does not let a non-SYSTEM process create
+/// further instances (in production the server is SYSTEM).
 #[cfg(test)]
 mod tests {
     use std::io::{BufRead, BufReader, Write};
@@ -143,11 +145,23 @@ mod tests {
             let mut line = String::new();
             BufReader::new(conn.file()).read_line(&mut line).unwrap();
             conn.file().write_all(format!("echo {line}").as_bytes()).unwrap();
-            // Second client: same pipe, GENERIC_READ | GENERIC_WRITE (old client code).
-            listener.accept().ok().map(|_| ())
         });
         ready_rx.recv().unwrap();
-        std::thread::sleep(Duration::from_millis(200));
+        // Wait until the instance exists (the open below must reach the DACL check).
+        let w = wide(&name);
+        let mut waited = 0;
+        while unsafe { WaitNamedPipeW(w.as_ptr(), 100) } == 0 && waited < 50 {
+            std::thread::sleep(Duration::from_millis(100));
+            waited += 1;
+        }
+        // Old client code: GENERIC_READ | GENERIC_WRITE → refused, instance stays free.
+        let denied = std::fs::OpenOptions::new().read(true).write(true).open(&name);
+        assert_eq!(
+            denied.err().and_then(|e| e.raw_os_error()),
+            Some(5),
+            "GENERIC_WRITE must be refused by the DACL (ERROR_ACCESS_DENIED)"
+        );
+        // Fixed client: PIPE_CLIENT_ACCESS → connects and talks.
         let f = connect(&name, Duration::from_secs(5)).expect("client connect with PIPE_CLIENT_ACCESS");
         assert_eq!(server_pid(&f), Some(std::process::id()));
         (&f).write_all(b"ping\n").unwrap();
@@ -155,15 +169,6 @@ mod tests {
         BufReader::new(&f).read_line(&mut reply).unwrap();
         assert_eq!(reply.trim(), "echo ping");
         drop(f);
-        std::thread::sleep(Duration::from_millis(200));
-        let denied = std::fs::OpenOptions::new().read(true).write(true).open(&name);
-        assert_eq!(
-            denied.err().and_then(|e| e.raw_os_error()),
-            Some(5),
-            "GENERIC_WRITE must be refused by the DACL (ERROR_ACCESS_DENIED)"
-        );
-        // Unblock the server's second accept.
-        let _ = connect(&name, Duration::from_secs(2));
-        let _ = server.join();
+        server.join().unwrap();
     }
 }
