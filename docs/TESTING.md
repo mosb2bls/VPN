@@ -107,6 +107,7 @@ function CnDirect { Check direct -cn }        # CN site, no proxy
 ```
 
 `$App` is the app executable inside `$Inst`. Run **`ExitBaseline` once while disconnected**
+(again after long breaks / reboots: the ISP may change your address, round 3),
 before testing. It stores a hash of your direct exit address in `$Snap` (local only).
 
 Afterwards `Loc` / `LocDirect` print one line such as `loc=GB exit=DIFFERENT via=system`:
@@ -139,7 +140,7 @@ Gentle to heavy; stop once websites load again. Note in the report which step fi
 4. Settings → Network & internet → Proxy: turn off "Use a proxy server" if it shows
    `127.0.0.1`, and turn off a setup script you did not set yourself. Restart the browser.
 5. Check: `Test-NetConnection 1.1.1.1 -Port 443` and `Resolve-DnsName example.com -DnsOnly`.
-6. Reboot. This clears the WFP filters and the Wintun adapter; the helper cleans up its
+6. Reboot. This clears the WFP filters and the TUN adapter (`tun0`); the helper cleans up its
    journal at start. To keep the helper from starting at boot until fixed:
    `Set-Service $Svc -StartupType Disabled` (undo with `Automatic`, or uninstall the helper).
 7. Last resort, after a reboot didn't help: `netsh winsock reset; netsh int ip reset`, then
@@ -150,22 +151,22 @@ Gentle to heavy; stop once websites load again. Note in the report which step fi
 | ID | What | Elevated | Status |
 |---|---|---|---|
 | W-BASELINE | Snapshot + compare tool works | yes (for the WFP count) | **PASS** round 1 (`0e336ca`, `docs/windows-test/2026-10-12-0e336ca.md`) |
-| W-INSTALL | Installer install / uninstall leaves nothing behind | partly | steps 1–3 **PASS** round 1; 4–6 not run (4 needs TUN) |
+| W-INSTALL | Installer install / uninstall leaves nothing behind | partly | 1–3 **PASS** round 1; 3b **PASS** round 3 (`f5d97fa`); 4–6 deferred |
 | W-SYSPROXY | System proxy mode | no | **PASS** round 1 |
-| W-HELPER | Helper service install / uninstall | UAC prompt | 1 **PASS**; 2 **FAIL** round 1 (F-1 pipe "Access is denied" — fixed, retest); 3 not run |
-| W-TUN | TUN connectivity | no | blocked by F-1 — retest |
-| W-DNSLEAK | DNS leak, both DNS profiles (pktmon) | **yes** | blocked by F-1 — retest |
-| W-IPV6 | IPv6 bypass | no | system-proxy observation recorded round 1; TUN part blocked by F-1 — retest |
-| W-KILL | Kill switch (core crash, helper crash) | **yes** | blocked by F-1 — retest |
-| W-FORCEKILL | App force-kill + relaunch, `--restore-networking` | no | 1–2 **PASS** round 1; 3 (TUN) blocked — retest |
-| W-RESTORE | Disconnect / Direct / Quit restore exactly | no | system proxy **PASS** round 1; TUN blocked — retest |
-| W-RESTORE-PARTIAL | Partial restore reporting (REQ-4) | **yes** | blocked by F-1 — retest |
+| W-HELPER | Helper service install / uninstall | UAC prompt | **PASS** round 3 (`f5d97fa`) (F-1, F-3 fixed) |
+| W-TUN | TUN connectivity | no | 1–2 **PASS** round 3 (`f5d97fa`); 3 FAIL (F-4 firewall rule left — fixed in 1.5.2, retest) |
+| W-DNSLEAK | DNS leak, both DNS profiles (pktmon) | **yes** | **PASS** round 3 (`f5d97fa`) (O-6: 2–3 packets to the other profile's DoH resolver after a profile switch, encrypted) |
+| W-IPV6 | IPv6 bypass | no | **PASS** round 3 (`f5d97fa`) |
+| W-KILL | Kill switch (core crash, helper crash) | **yes** | 1, 2, 4 **PASS** round 3 (`f5d97fa`); 3 FAIL (F-5 app status after helper crash — fixed in 1.5.2, retest) |
+| W-FORCEKILL | App force-kill + relaunch, `--restore-networking` | no | **PASS** (1–2 round 1, 3 round 3 (`f5d97fa`)) |
+| W-RESTORE | Disconnect / Direct / Quit restore exactly | no | **PASS** (system proxy round 1, TUN round 3 (`f5d97fa`) apart from F-4) |
+| W-RESTORE-PARTIAL | Partial restore reporting (REQ-4) | **yes** | **PASS** round 3 (`f5d97fa`) |
 | W-RESTORE-PARTIAL-FW | Kill-switch removal failure | — | N/A on Windows (see item) |
-| W-FAILOVER | Failover with UDP 24443 blocked | **yes** | not run |
-| W-NETCHANGE | Network change, sleep / wake | partly | not run |
-| W-REBOOT | Forced reboot with a leftover journal | no | not run |
-| W-LOGIN | Launch at login, single instance | no | 1, 3, 4 **PASS** round 1 (M-2 leftover fixed — recheck step 4, new step 5); 2 not run |
-| W-SHELL | Tray popover, scaling, Settings title bar | no | partly round 1 (F-2 node-picker scrollbars → UI; E-1 title bar → UI + SPEC 1.5.0) |
+| W-FAILOVER | Failover with UDP 24443 blocked | **yes** | switch **PASS** (system proxy) round 3 (`f5d97fa`); return FAIL (F-7 — fixed in 1.5.2, retest); TUN not testable with a firewall rule |
+| W-NETCHANGE | Network change, sleep / wake | partly | **PASS** both modes round 3 (`f5d97fa`) |
+| W-REBOOT | Forced reboot with a leftover journal | no | TUN **PASS** round 3 (`f5d97fa`); system proxy (login OFF) PASS owner-reported; login ON deferred |
+| W-LOGIN | Launch at login, single instance | no | 1, 3, 4 **PASS**; 5 FAIL round 3 (`f5d97fa`) (F-8 not listed in Task Manager — fixed in 1.5.2, retest); 2 deferred |
+| W-SHELL | Tray popover, scaling, Settings title bar | no | **PASS** round 3 (`f5d97fa`) (owner-reported) |
 
 ### W-BASELINE — snapshot + compare (elevated)
 
@@ -225,7 +226,7 @@ legitimately differ.
    - exactly **one** UAC prompt (helper removal), which you accept;
    - afterwards `Get-Service $Svc -ErrorAction SilentlyContinue` → nothing;
    - `Test-Path "$env:ProgramFiles\Lynnk\Helper", "$env:ProgramData\Lynnk\Helper"` → `False, False`;
-   - elevated: `Snapshot post-uninstall2 pre-install` → identical (no Wintun adapter, `wfpKillSwitchFilters` 0).
+   - elevated: `Snapshot post-uninstall2 pre-install` → identical (no TUN adapter (`tun0`), `wfpKillSwitchFilters` 0).
 5. Repeat step 4 connected in **System proxy** mode. **Pass:** `internetSettings` and
    `defaultConnectionSettings` are `same`.
 6. Repeat step 4 and **decline** the UAC prompt. **Expected:** the app is removed, but the
@@ -273,7 +274,7 @@ Install, so the tests run on this build's helper. At any point,
 
 1. `Snapshot before`. Helper installed, capture mode TUN, Rule, connect HY2.
    **Pass:**
-   - `Get-NetAdapter | Where-Object InterfaceDescription -like '*Wintun*'` → one adapter, Up;
+   - `Get-NetAdapter | Where-Object { $_.Name -eq 'tun0' -or $_.InterfaceDescription -like '*sing-tun*' }` → one adapter, Up (sing-box names it `tun0`, "sing-tun Tunnel");
    - `LocDirect` → `exit=DIFFERENT` (no proxy configured anywhere), and `CnDirect` → `cn=200`;
    - `Resolve-DnsName example.com` answers;
    - Windows proxy settings untouched (`Snapshot during before` shows `internetSettings same`).
@@ -303,7 +304,7 @@ pktmon stop
 pktmon filter remove
 ```
 
-**Pass**, on the **physical** adapter (Wi-Fi / Ethernet; the Wintun adapter is expected to
+**Pass**, on the **physical** adapter (Wi-Fi / Ethernet; the TUN adapter (`tun0`) is expected to
 see DNS):
 - DNS53u, DNS53t and DoT853: 0;
 - CfDNS: 0 (Cloudflare DNS goes only through the tunnel);
@@ -319,9 +320,9 @@ cross-check: ipleak.net in Edge shows no resolver from your ISP.
 2. TUN connected: the same command → fails (`000`) **quickly**. Measure with
    `Measure-Command { curl.exe -6 -s -o NUL -m 10 https://ipv6.google.com }`: under
    ~2 s means rejected rather than timed out.
-3. Browse a few dual-stack sites (google.com, wikipedia.org, facebook.com), then:
+3. Browse a few dual-stack sites (google.com, wikipedia.org, facebook.com), then (set `$connectedAt = Get-Date` right after connecting):
    ```powershell
-   (Get-NetTCPConnection -State Established | Where-Object { $_.RemoteAddress -match ':' -and $_.RemoteAddress -notmatch '^(::1|fe80|fdfe:dcba:9876)' }).Count
+   (Get-NetTCPConnection -State Established | Where-Object { $_.CreationTime -gt $connectedAt -and $_.RemoteAddress -match ':' -and $_.RemoteAddress -notmatch '^(::1|fe80|fdfe:dcba:9876)' }).Count
    ```
    **Pass:** `0`. Report the count only. In Edge, test-ipv6.com shows no IPv6.
 4. System-proxy mode: record what step 3 shows, as an observation only. Expected and
@@ -331,7 +332,8 @@ cross-check: ipleak.net in Edge shows no resolver from your ISP.
 
 ### W-KILL — kill switch (elevated)
 
-TUN connected, kill switch enabled in Settings, a large download or video running in the
+TUN connected, kill switch enabled in Settings, a large download (e.g. Edge →
+`https://speed.cloudflare.com/__down?bytes=1000000000`) or video running in the
 browser.
 
 1. Keep the core down for ~20 s (the helper restarts it with backoff 1, 2, 4, 8 s…):
@@ -414,14 +416,20 @@ case instead.
 ### W-FAILOVER — failover with UDP 24443 blocked (elevated)
 
 For System proxy and TUN, Rule mode, HY2 selected, REALITY present, failover on (default
-settings):
+settings). **Add the block rule before connecting**: Windows Firewall does not re-check an
+already open UDP flow. **TUN:** the rule does not affect the helper's sing-box, so block UDP
+24443 elsewhere (router, or a phone hotspot that blocks UDP), or record TUN as not testable.
+The return to HY2 takes ≥ 10 min after unblocking; a script that waits should say so while it
+waits. If HY2 stays failing in the running core while the server is fine, the app checks it
+with a fresh core every ~30 s and returns by restarting the core (SPEC 1.5.2, F-7) — the log
+shows "fresh check passes".
 
 ```powershell
 New-NetFirewallRule -DisplayName 'EdgeTest-BlockHY2' -Direction Outbound -Protocol UDP -RemotePort 24443 -Action Block | Out-Null
 ```
 
 **Pass:**
-- within ~30–40 s, a notification about switching to the REALITY node, and the app shows REALITY;
+- within ~30–60 s the popover shows the switch to REALITY with the reason (the app has no OS notifications — round 3);
 - `Loc` / `LocDirect` → `exit=DIFFERENT`, and no "all nodes failing".
 
 Then:
@@ -441,7 +449,7 @@ For System proxy and TUN, connected:
 - (a) Elevated: `Disable-NetAdapter -Name 'Wi-Fi' -Confirm:$false; Start-Sleep 15; Enable-NetAdapter -Name 'Wi-Fi'`.
   Use your adapter name from `Get-NetAdapter`. Alternatively switch Wi-Fi ↔ Ethernet or
   to a phone hotspot.
-- (b) Start → Power → Sleep, wait ≥ 2 min, wake.
+- (b) Start → Power → Sleep; keep it asleep ≥ 2 min **by the clock** (Modern Standby PCs may wake early and keep the network up — check the real duration with `Get-WinEvent -FilterHashtable @{LogName='System'; Id=506,507} -MaxEvents 4`), wake.
 
 **Pass:**
 - within ~30 s of the network returning, `Loc` / `LocDirect` → `exit=DIFFERENT`, and the state is
@@ -455,11 +463,11 @@ For System proxy and TUN, connected:
 1. **TUN:** `Snapshot before`, connect, then `shutdown /r /f /t 0`. The app gets no clean
    quit. After signing in again, *before* starting the app:
    - **Pass:** `Get-Service $Svc` → Running;
-   - **Pass:** no Wintun adapter;
+   - **Pass:** no TUN adapter (`tun0`);
    - elevated: `Snapshot boot before`. **Pass:** `wfpKillSwitchFilters` 0, and normal
      browsing works (the helper cleaned up at boot).
 
-   Start the app. **Pass:** a recovery notice, then `Snapshot after before` → identical.
+   Start the app. **Pass:** `Snapshot after before` → identical. A recovery notice appears only if the app itself had to restore something; when the helper already cleaned up at boot, `lastRecovery` is `restored` with all items `not_needed` and no notice is shown (round 3, O-7 — intended).
 2. **System proxy:** `Snapshot before`, connect, `shutdown /r /f /t 0`. After signing in,
    with launch at login off:
    - **Expected:** `Loc` → `loc=FAILED` (the proxy still points at the dead port; fail closed).

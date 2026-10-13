@@ -632,10 +632,14 @@ pub async fn set_settings(app: AppHandle, settings: AppSettings) -> ApiResult<Ap
     if settings.launch_at_login != currently {
         let r = if settings.launch_at_login { autolaunch.enable() } else { autolaunch.disable() };
         r.map_err(|e| AppError::new(ErrorCode::LaunchAtLoginFailed).with_detail(e.to_string()))?;
-        // Windows: drop Task Manager's approval record, so ON really starts the app
-        // and OFF leaves nothing behind (round 1, M-2).
+        // Windows: ON → Task Manager's approval record says enabled (overrides an
+        // earlier disable there; F-8); OFF → record removed, nothing left (M-2).
         #[cfg(windows)]
-        edge_winsys::startup::approved_clear(edge_core::APP_NAME);
+        if settings.launch_at_login {
+            edge_winsys::startup::approved_set_enabled(edge_core::APP_NAME);
+        } else {
+            edge_winsys::startup::approved_clear(edge_core::APP_NAME);
+        }
     }
     with_state(&app, |st| Ok(st.prefs.update(|p| p.app = settings)?.app.clone()))
 }

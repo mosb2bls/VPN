@@ -4,7 +4,9 @@
 //! (binary; first byte even = enabled, odd = disabled). The autostart plugin
 //! only manages the `Run` value itself, so the app reads and clears this record.
 
-use windows_sys::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_BINARY, RegDeleteKeyValueW, RegGetValueW};
+use windows_sys::Win32::System::Registry::{
+    HKEY_CURRENT_USER, REG_BINARY, RRF_RT_REG_BINARY, RegDeleteKeyValueW, RegGetValueW, RegSetKeyValueW,
+};
 
 use crate::wide;
 
@@ -21,8 +23,17 @@ pub fn approved_disabled(name: &str) -> bool {
     rc == 0 && len > 0 && buf[0] & 1 == 1
 }
 
-/// Remove the approval record (after our own enable / disable, so it never
-/// overrides the user's latest choice in the app or lingers after OFF).
+/// Mark the login item enabled (after the app turns launch at login ON): the
+/// record Windows itself writes, 12 bytes = DWORD 2 + zero FILETIME. Deleting it
+/// instead made Task Manager stop listing the app (round 3, F-8).
+pub fn approved_set_enabled(name: &str) {
+    let (k, v) = (wide(KEY), wide(name));
+    let data: [u8; 12] = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    unsafe { RegSetKeyValueW(HKEY_CURRENT_USER, k.as_ptr(), v.as_ptr(), REG_BINARY, data.as_ptr() as _, data.len() as u32) };
+}
+
+/// Remove the approval record (after launch at login OFF and on uninstall, so
+/// nothing lingers — round 1, M-2).
 pub fn approved_clear(name: &str) {
     let (k, v) = (wide(KEY), wide(name));
     unsafe { RegDeleteKeyValueW(HKEY_CURRENT_USER, k.as_ptr(), v.as_ptr()) };

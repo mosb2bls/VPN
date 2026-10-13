@@ -174,6 +174,9 @@ impl Session {
 
     pub fn stop(&self) -> HResult<HelperState> {
         let (_, pf) = self.stop_inner();
+        if let Err(e) = sys::remove_tun_firewall_rule() {
+            util::log(&format!("TUN firewall rule not removed: {e}"));
+        }
         if let Err(e) = pf {
             return err(ErrorCode::KillSwitchRemoveFailed, e);
         }
@@ -210,10 +213,21 @@ impl Session {
         } else {
             item("routes", "not_needed", "Routes were not changed", None)
         };
-        let fw_item = match &pf_items {
-            Ok(true) => item("firewall", "restored", "Removed the kill-switch firewall rules", None),
-            Ok(false) => item("firewall", "not_needed", "No kill-switch rules were active", None),
-            Err(e) => item("firewall", "failed", &format!("Could not remove the kill-switch rules: {e}"), Some(ErrorCode::KillSwitchRemoveFailed)),
+        let tun_rule = sys::remove_tun_firewall_rule();
+        let fw_item = match (&pf_items, &tun_rule) {
+            (Err(e), _) => item("firewall", "failed", &format!("Could not remove the kill-switch rules: {e}"), Some(ErrorCode::KillSwitchRemoveFailed)),
+            (_, Err(e)) => item("firewall", "failed", &format!("Could not remove the TUN firewall rule: {e}"), Some(ErrorCode::KillSwitchRemoveFailed)),
+            (Ok(ks), Ok(rule)) if *ks || *rule => item(
+                "firewall",
+                "restored",
+                match (ks, rule) {
+                    (true, true) => "Removed the kill-switch rules and the TUN firewall rule",
+                    (true, false) => "Removed the kill-switch firewall rules",
+                    _ => "Removed the TUN firewall rule",
+                },
+                None,
+            ),
+            _ => item("firewall", "not_needed", "No kill-switch or TUN firewall rules were active", None),
         };
         if pf_items.is_ok() {
             let _ = std::fs::remove_file(journal_path());

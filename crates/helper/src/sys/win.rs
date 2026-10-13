@@ -47,6 +47,34 @@ pub fn ks_leftover() -> bool {
     false
 }
 
+/// sing-box's Windows "system" TCP stack adds a persistent inbound-allow rule for
+/// its own binary, `sing-tun (<abs path>)` (sing-tun `stack_system_windows.go`,
+/// `fixWindowsFirewall`), and never removes it. It is only needed while the TUN
+/// runs, so remove it after every session, at recovery and on uninstall
+/// (Windows round 3, F-4). Exact name + program match; netsh argv, no shell.
+/// Ok(true) = removed, Ok(false) = there was none.
+pub fn remove_tun_firewall_rule() -> Result<bool, String> {
+    let exe = paths::singbox_exe();
+    let name = format!("name=sing-tun ({})", exe.display());
+    let program = format!("program={}", exe.display());
+    let netsh = std::path::Path::new(&std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into())).join(r"System32\netsh.exe");
+    let run = |args: &[&str]| {
+        let mut c = Command::new(&netsh);
+        c.args(args).creation_flags(CREATE_NO_WINDOW);
+        c.output().map_err(|e| e.to_string())
+    };
+    let shown = run(&["advfirewall", "firewall", "show", "rule", &name])?;
+    if !shown.status.success() {
+        return Ok(false); // no such rule
+    }
+    let deleted = run(&["advfirewall", "firewall", "delete", "rule", &name, "dir=in", &program])?;
+    if deleted.status.success() {
+        Ok(true)
+    } else {
+        Err(format!("netsh delete rule failed ({})", deleted.status))
+    }
+}
+
 pub fn core_command() -> Command {
     let mut c = Command::new(singbox_path());
     c.creation_flags(CREATE_NO_WINDOW);

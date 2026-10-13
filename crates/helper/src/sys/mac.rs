@@ -44,6 +44,11 @@ pub fn ks_leftover() -> bool {
     !pfctl::current_rules().trim().is_empty()
 }
 
+/// Windows only (sing-box's TUN firewall rule); nothing to do on macOS.
+pub fn remove_tun_firewall_rule() -> Result<bool, String> {
+    Ok(false)
+}
+
 pub fn core_command() -> Command {
     Command::new(singbox_path())
 }

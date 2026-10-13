@@ -55,7 +55,10 @@ try { $r = Get-Body 'https://1.1.1.1/cdn-cgi/trace' }
 catch { Write-Output "loc=FAILED via=$Via ($($_.Exception.GetType().Name))"; exit 0 }
 $lines = ([string]$r.body) -split "`n"
 $loc = ($lines | Where-Object { $_ -like 'loc=*' } | Select-Object -First 1)
-$ip = (($lines | Where-Object { $_ -like 'ip=*' } | Select-Object -First 1) -replace '^ip=', '').Trim()
+$ipLine = ($lines | Where-Object { $_ -like 'ip=*' } | Select-Object -First 1)
+# A failed request (e.g. curl while the kill switch blocks) has no ip= line (round 3, F-6).
+if ($r.status -ne 200 -or -not $ipLine) { Write-Output "loc=FAILED via=$Via (http $($r.status))"; exit 0 }
+$ip = ([string]$ipLine).Substring(3).Trim()
 if (-not $loc) { $loc = 'loc=?' }
 $hash = [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash([Text.Encoding]::UTF8.GetBytes($ip)))
 $file = Join-Path $Dir 'direct-exit.hash'

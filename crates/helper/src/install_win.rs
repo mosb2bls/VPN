@@ -75,6 +75,9 @@ pub fn uninstall() -> Result<(), String> {
     if session::load_journal().is_some() {
         let _ = session::Session::default().restore();
     }
+    if let Err(e) = crate::sys::remove_tun_firewall_rule() {
+        eprintln!("TUN firewall rule not removed: {e}");
+    }
     let _ = std::fs::remove_dir_all(session::data_dir());
     let _ = std::fs::remove_file(paths::singbox_exe());
     let _ = std::fs::remove_file(paths::helper_exe());

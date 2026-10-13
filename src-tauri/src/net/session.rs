@@ -374,6 +374,16 @@ fn start_core(p: &Plan, mixed: Option<u16>) -> ApiResult<(CoreProcess, ClashApi,
     Ok((core, api, mixed))
 }
 
+/// The primary through a fresh temporary core (system-proxy mode; see FreshPrimary).
+fn fresh_primary_check(p: &Plan, node_id: &str, targets: &[String], timeout_ms: u32) -> bool {
+    let Some(cfg) = p.configs.iter().find(|(id, _)| id == node_id).map(|(_, c)| c) else { return false };
+    let work = p.dir.join("run").join(format!("probe-{}", uuid::Uuid::new_v4().simple()));
+    let targets: Vec<&str> = targets.iter().map(String::as_str).collect();
+    let ok = probe::probe_node(&p.bin, cfg, p.rules.clone(), p.dns, &work, &targets, timeout_ms).map(|r| r.ok()).unwrap_or(false);
+    let _ = std::fs::remove_dir_all(&work);
+    ok
+}
+
 fn health(api: &ClashApi, node_id: &str, targets: &[String], timeout_ms: u32) -> (bool, Vec<ProbeResult>) {
     let tag = singbox::node_tag(node_id);
     let probes: Vec<ProbeResult> = targets
@@ -742,7 +752,11 @@ async fn restart_tun(app: &AppHandle, mut p: Plan) -> ApiResult<()> {
                     s.node_ids = p.configs.iter().map(|(id, _)| id.clone()).collect();
                 }
             });
-            update_status(app, Some("Connected"), |s| s.state = ConnectionState::Connected);
+            update_status(app, Some("Connected"), |s| {
+                s.state = ConnectionState::Connected;
+                s.tun_active = true;
+                s.last_error = None;
+            });
             spawn_monitor(app.clone(), generation, p);
             Ok(())
         }
@@ -792,6 +806,7 @@ fn spawn_monitor(app: AppHandle, generation: u64, p: Plan) {
         let mut next_health = Instant::now() + Duration::from_secs(10);
         let started = Instant::now();
         let mut engine: Option<failover::Engine> = None;
+        let mut fresh = FreshPrimary::default();
         loop {
             std::thread::sleep(Duration::from_secs(1));
             let Some((core, api, latency, active)) = with(&app, |st| {
@@ -814,6 +829,31 @@ fn spawn_monitor(app: AppHandle, generation: u64, p: Plan) {
                 // TUN: the helper supervises the core (kill switch, restart);
                 // mirror its state and follow controller changes.
                 None => match crate::net::helper_client::status() {
+                    Ok(hs) if !hs.running && !hs.restarting && !hs.kill_switch_active => {
+                        // The helper has no session: it restarted after a crash and its
+                        // startup recovery removed the TUN and the kill switch, so traffic
+                        // is NOT protected now (Windows round 3, F-5). Say so and reconnect.
+                        logbuf::app(LogLevel::Error, "TUN session lost: the helper restarted without it — reconnecting");
+                        update_status(&app, Some("TUN session lost (the helper restarted) — reconnecting"), |s| {
+                            s.state = ConnectionState::Reconnecting;
+                            s.tun_active = false;
+                            s.kill_switch_active = false;
+                            s.last_error = Some(
+                                AppError::new(ErrorCode::HelperUnreachable).with_detail("the helper restarted; its TUN session ended"),
+                            );
+                        });
+                        let app2 = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            if let Err(e) = restart_core(&app2).await {
+                                logbuf::app(LogLevel::Error, format!("TUN reconnect failed: {:?}", e.code));
+                                update_status(&app2, Some("Could not restore the TUN session"), |s| {
+                                    s.state = ConnectionState::Error;
+                                    s.last_error = Some(e);
+                                });
+                            }
+                        });
+                        return;
+                    }
                     Ok(hs) => {
                         let state = with(&app, |st| st.status.state);
                         if hs.restarting || (!hs.running && hs.kill_switch_active) {
@@ -892,7 +932,7 @@ fn spawn_monitor(app: AppHandle, generation: u64, p: Plan) {
                 let interval = with(&app, |st| st.prefs.prefs.failover.probe_interval_secs.max(5));
                 next_health = Instant::now() + Duration::from_secs(interval as u64);
                 if active.is_some() {
-                    health_round(&app, &api, &p, &latency, &mut engine, started.elapsed().as_secs());
+                    health_round(&app, &api, &p, &latency, &mut engine, &mut fresh, started.elapsed().as_secs());
                 }
             }
         }
@@ -918,12 +958,29 @@ fn pick_fallback(st: &crate::state::AppData, primary: &str, in_config: &[String]
 
 /// One probe round: node in use (+ the other node when it matters), failover
 /// decision, events, status.
+/// While on the fallback: the running core's outbound for the primary can stay
+/// broken after a network block although the server is fine again (Windows
+/// round 3, F-7: blocked UDP, then HY2 never came back in the long-running core
+/// while a fresh core connected at once). After repeated in-core failures, ask a
+/// fresh temporary core (as `test_node` does) and use that as the primary's health.
+#[derive(Default)]
+struct FreshPrimary {
+    in_core_fails: u32,
+    /// The latest primary signal came from a fresh core while the running core's
+    /// primary outbound still failed → return by restarting the core.
+    passing_only_fresh: bool,
+}
+
+/// Every Nth consecutive in-core primary failure on the fallback runs a fresh check.
+const FRESH_CHECK_EVERY: u32 = 3;
+
 fn health_round(
     app: &AppHandle,
     api: &ClashApi,
     p: &Plan,
     latency: &Arc<Mutex<Option<u32>>>,
     engine: &mut Option<failover::Engine>,
+    fresh: &mut FreshPrimary,
     now: u64,
 ) {
     let (selected, fallback, settings, targets, timeout_ms) = with(app, |st| {
@@ -1013,8 +1070,34 @@ fn health_round(
         && let Some(other) = e.other_id().map(str::to_string)
         && (e.on_fallback() || !ok)
     {
-        let (other_ok, _) = health(api, &other, &targets, timeout_ms);
-        decision = e.on_other_round(now, other_ok, &settings);
+        let (mut other_ok, _) = health(api, &other, &targets, timeout_ms);
+        let mut feed = true;
+        if e.on_fallback() && other == e.primary_id() {
+            if other_ok {
+                *fresh = FreshPrimary::default();
+            } else {
+                fresh.in_core_fails += 1;
+                // TUN: a temporary core would itself be routed through the tunnel,
+                // so the fresh check is system-proxy only.
+                if !p.tun && fresh.in_core_fails.is_multiple_of(FRESH_CHECK_EVERY) {
+                    other_ok = fresh_primary_check(p, &other, &targets, timeout_ms);
+                    fresh.passing_only_fresh = other_ok;
+                    logbuf::app(
+                        LogLevel::Info,
+                        format!(
+                            "failover: primary fails in the running core; fresh check {}",
+                            if other_ok { "passes" } else { "fails too" }
+                        ),
+                    );
+                } else if fresh.passing_only_fresh {
+                    // Between fresh checks: no new information about the primary.
+                    feed = false;
+                }
+            }
+        }
+        if feed {
+            decision = e.on_other_round(now, other_ok, &settings);
+        }
     }
     let _ = HealthCheck {
         node_id: active.clone(),
@@ -1032,6 +1115,34 @@ fn health_round(
     });
     let primary = e.primary_id().to_string();
     match decision {
+        failover::Decision::ReturnToPrimary { to, reason } if fresh.passing_only_fresh => {
+            // The running core's primary outbound is stuck: return by restarting
+            // the core with the primary selected (restart_core keeps the active node).
+            let now_s = edge_core::clock::now_rfc3339();
+            let reason = format!("{reason} (restarting the proxy core to reconnect it)");
+            let _ = FailoverEvent {
+                kind: FailoverKind::ReturnedToPrimary,
+                from_node_id: active.clone(),
+                to_node_id: Some(to.clone()),
+                reason: reason.clone(),
+                at: now_s,
+            }
+            .emit(app);
+            let _ = ActiveNodeChanged { previous_node_id: Some(active.clone()), node_id: Some(to.clone()), cause: NodeChangeCause::Failback }
+                .emit(app);
+            logbuf::app(LogLevel::Warn, format!("failover: {reason}"));
+            update_status(app, Some(&reason), |s| {
+                s.active_node_id = Some(to.clone());
+                s.failover = None;
+            });
+            *fresh = FreshPrimary::default();
+            let app2 = app.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = restart_core(&app2).await {
+                    logbuf::app(LogLevel::Error, format!("failover restart failed: {:?}", e.code));
+                }
+            });
+        }
         failover::Decision::SwitchToFallback { to, reason } | failover::Decision::ReturnToPrimary { to, reason } => {
             let back = to == primary;
             update_status(app, Some(&reason), |s| s.state = ConnectionState::FailingOver);
