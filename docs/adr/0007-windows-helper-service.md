@@ -86,7 +86,12 @@ binary) and report what was restored.
 toolchain), shared by the helper and the app. The helper's session logic is shared with
 macOS; per-OS parts are in `crates/helper/src/sys/`. The pipe DACL grants the user
 `0x0012008B` (read + write data) but not `FILE_APPEND_DATA`, which on a pipe means "create
-pipe instance". The app verifies the pipe server's image path before sending anything. An
+pipe instance". The client must therefore open the pipe with exactly
+`FILE_READ_DATA | FILE_WRITE_DATA | FILE_READ_ATTRIBUTES | SYNCHRONIZE`
+(`edge_winsys::PIPE_CLIENT_ACCESS`): `GENERIC_WRITE` maps to `FILE_GENERIC_WRITE`, which
+includes `FILE_APPEND_DATA` / `FILE_WRITE_EA` / `FILE_WRITE_ATTRIBUTES`, and is refused
+("Access is denied" — Windows round 1, F-1). A Windows CI test creates a pipe with this DACL
+and checks that the client open succeeds and a `GENERIC_WRITE` open is refused. The app verifies the pipe server's image path before sending anything. An
 elevated install has no console the app can read, so the helper writes its error text to a
 `--report` file that the app reads and deletes. sing-box and its child tools are started
 with `CREATE_NO_WINDOW`. Also fixed for system-proxy mode: a stale core is killed after an

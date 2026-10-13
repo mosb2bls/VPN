@@ -4,10 +4,10 @@ Each agent edits only its own section.
 
 ## Backend
 
-- **Phase/step:** B3.1 — macOS privileged helper + TUN mode + pf kill switch + re-attach
-  (implemented and unit-tested; **awaiting owner install + real TUN tests**, TESTING §6).
-  Next: Windows service / WFP (B3.2) after the macOS results; then failover (B4).
-- **SPEC version:** 1.4.2 (Windows TUN + helper enabled, labelled experimental; helper failure detail shown)
+- **Phase/step:** Windows test loop (B3.2 done, untested parts being tested by the Windows
+  tester). Round 1 (`0e336ca`): 9 pass, F-1 (pipe access denied, blocked all TUN) fixed in
+  SPEC 1.5.0 together with M-1, M-2, E-1 (Windows title bar) and checklist issues 1–9.
+- **SPEC version:** 1.5.0
 - **Real:** nodes, settings, system proxy mode (macOS), TUN mode via helper (macOS),
   helper status / install / uninstall (macOS, admin prompt), live node switch, test_node,
   logs, launch recovery (restore or TUN re-attach), `--restore-networking`, windows + tray,

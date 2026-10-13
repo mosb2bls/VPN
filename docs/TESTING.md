@@ -88,23 +88,36 @@ $Inst = "$env:LOCALAPPDATA\Lynnk"     # per-user install dir (NSIS default)
 $App  = Get-ChildItem $Inst -Filter *.exe | Where-Object Name -notin 'sing-box.exe','edge-helper.exe','uninstall.exe' | Select-Object -First 1
 $Svc  = 'io.github.mosb2bls.edgeclient.helper'
 $Snap = 'C:\edge-test'                      # local only
-$Repo = "$HOME\VPN"                          # your clone (for scripts\windows\net-snapshot.ps1)
+$Repo = '<path to your clone>'               # e.g. "$HOME\Desktop\VPN" (scripts\windows\*.ps1)
 function Snapshot($name, $compare) {          # W-BASELINE helper
   $a = @('-NoProfile','-ExecutionPolicy','Bypass','-File',"$Repo\scripts\windows\net-snapshot.ps1",'-Out',"$Snap\$name.json")
   if ($compare) { $a += @('-Compare', "$Snap\$compare.json") }
   powershell @a
 }
-function Loc {                                # exit country through the system proxy (WinINet)
-  try { ((Invoke-WebRequest -UseBasicParsing -TimeoutSec 10 https://1.1.1.1/cdn-cgi/trace).Content -split "`n" | Where-Object { $_ -like 'loc=*' }) }
-  catch { "FAILED: $($_.Exception.GetType().Name)" }
+function Check($via, [switch]$cn, [switch]$save) {   # each call = a fresh process (no proxy caching)
+  $a = @('-NoProfile','-ExecutionPolicy','Bypass','-File',"$Repo\scripts\windows\exit-check.ps1",'-Via',$via,'-Dir',$Snap)
+  if ($cn) { $a += '-Cn' }; if ($save) { $a += '-SaveBaseline' }
+  powershell @a
 }
-function LocDirect { curl.exe -s -m 10 https://1.1.1.1/cdn-cgi/trace | Select-String '^loc=' }   # no proxy (TUN test)
-function Cn { curl.exe -s -o NUL -m 10 -w "%{http_code}" https://www.baidu.com }                    # a CN site
+function ExitBaseline { Check direct -save }  # once, while DISCONNECTED
+function Loc { Check system }                 # through the Windows proxy, like browsers
+function LocDirect { Check direct }           # curl, ignores the Windows proxy (TUN tests)
+function Cn { Check system -cn }              # CN site through the Windows proxy
+function CnDirect { Check direct -cn }        # CN site, no proxy
 ```
 
-`$App` is the app executable inside `$Inst`. `Loc` uses the Windows proxy settings, as
-browsers do. `LocDirect` uses no proxy. Only the `loc=` line is printed (the trace's `ip=`
-line is dropped).
+`$App` is the app executable inside `$Inst`. Run **`ExitBaseline` once while disconnected**
+before testing. It stores a hash of your direct exit address in `$Snap` (local only).
+
+Afterwards `Loc` / `LocDirect` print one line such as `loc=GB exit=DIFFERENT via=system`:
+- `exit=DIFFERENT` = the traffic went through the server;
+- `exit=same` = it went direct.
+
+This matters because `loc=` alone can't tell the two apart when your own exit country is also
+GB (round 1). No address is ever printed. Each helper starts a new PowerShell process, because
+one long-lived window caches the proxy setting and would silently go direct after connecting.
+`Cn` / `CnDirect` print `cn=<HTTP status>`. `curl` ignores the Windows proxy, so use `Loc` /
+`Cn` for system-proxy checks and `LocDirect` / `CnDirect` for TUN checks.
 
 ### 3.R Recovery — if the network breaks during a test (elevated)
 
@@ -136,23 +149,23 @@ Gentle to heavy; stop once websites load again. Note in the report which step fi
 
 | ID | What | Elevated | Status |
 |---|---|---|---|
-| W-BASELINE | Snapshot + compare tool works | yes (for the WFP count) | not run |
-| W-INSTALL | Installer install / uninstall leaves nothing behind | partly | not run |
-| W-SYSPROXY | System proxy mode | no | not run |
-| W-HELPER | Helper service install / uninstall | UAC prompt | not run |
-| W-TUN | TUN connectivity | no | not run |
-| W-DNSLEAK | DNS leak, both DNS profiles (pktmon) | **yes** | not run |
-| W-IPV6 | IPv6 bypass | no | not run |
-| W-KILL | Kill switch (core crash, helper crash) | **yes** | not run |
-| W-FORCEKILL | App force-kill + relaunch, `--restore-networking` | no | not run |
-| W-RESTORE | Disconnect / Direct / Quit restore exactly | no | not run |
-| W-RESTORE-PARTIAL | Partial restore reporting (REQ-4) | **yes** | not run |
+| W-BASELINE | Snapshot + compare tool works | yes (for the WFP count) | **PASS** round 1 (`0e336ca`, `docs/windows-test/2026-10-12-0e336ca.md`) |
+| W-INSTALL | Installer install / uninstall leaves nothing behind | partly | steps 1–3 **PASS** round 1; 4–6 not run (4 needs TUN) |
+| W-SYSPROXY | System proxy mode | no | **PASS** round 1 |
+| W-HELPER | Helper service install / uninstall | UAC prompt | 1 **PASS**; 2 **FAIL** round 1 (F-1 pipe "Access is denied" — fixed, retest); 3 not run |
+| W-TUN | TUN connectivity | no | blocked by F-1 — retest |
+| W-DNSLEAK | DNS leak, both DNS profiles (pktmon) | **yes** | blocked by F-1 — retest |
+| W-IPV6 | IPv6 bypass | no | system-proxy observation recorded round 1; TUN part blocked by F-1 — retest |
+| W-KILL | Kill switch (core crash, helper crash) | **yes** | blocked by F-1 — retest |
+| W-FORCEKILL | App force-kill + relaunch, `--restore-networking` | no | 1–2 **PASS** round 1; 3 (TUN) blocked — retest |
+| W-RESTORE | Disconnect / Direct / Quit restore exactly | no | system proxy **PASS** round 1; TUN blocked — retest |
+| W-RESTORE-PARTIAL | Partial restore reporting (REQ-4) | **yes** | blocked by F-1 — retest |
 | W-RESTORE-PARTIAL-FW | Kill-switch removal failure | — | N/A on Windows (see item) |
 | W-FAILOVER | Failover with UDP 24443 blocked | **yes** | not run |
 | W-NETCHANGE | Network change, sleep / wake | partly | not run |
 | W-REBOOT | Forced reboot with a leftover journal | no | not run |
-| W-LOGIN | Launch at login, single instance | no | not run |
-| W-SHELL | Tray popover position, display scaling | no | not run |
+| W-LOGIN | Launch at login, single instance | no | 1, 3, 4 **PASS** round 1 (M-2 leftover fixed — recheck step 4, new step 5); 2 not run |
+| W-SHELL | Tray popover, scaling, Settings title bar | no | partly round 1 (F-2 node-picker scrollbars → UI; E-1 title bar → UI + SPEC 1.5.0) |
 
 ### W-BASELINE — snapshot + compare (elevated)
 
@@ -177,12 +190,15 @@ legitimately differ.
 ### W-INSTALL — installer install / uninstall (partly elevated)
 
 1. Elevated: `Snapshot pre-install`.
-2. Run `Lynnk_<version>_x64-setup.exe` from the CI artifact. SmartScreen warns
-   because the installer is unsigned: More info → Run anyway.
+2. Download the artifact **in the browser** (a `gh run download` copy has no
+   Mark-of-the-Web, so SmartScreen is never consulted), extract it in Explorer, and run
+   `Lynnk_<version>_x64-setup.exe`. SmartScreen *may* warn because the installer is unsigned
+   (More info → Run anyway). Round 1 saw no warning, so record whether one appeared.
    **Pass:**
    - no UAC prompt (per-user install);
    - `Test-Path $Inst\sing-box.exe, $Inst\edge-helper.exe, $Inst\resources\rules\geosite-cn.srs` → all `True`;
-   - a Start-menu entry exists, and the app starts in the tray.
+   - a Start-menu entry exists, and the app starts in the tray;
+   - Settings → Apps → Installed apps shows the publisher **Lynnk**.
 3. Uninstall without the helper: Settings → Apps → Installed apps → Lynnk → Uninstall
    (or `& "$Inst\uninstall.exe"`).
    **Pass:**
@@ -190,8 +206,12 @@ legitimately differ.
    - `Test-Path $Inst\*.exe` → `False`;
    - elevated: `Snapshot post-uninstall pre-install` → identical.
 
-   App data in `%APPDATA%\io.github.mosb2bls.edgeclient` stays unless you tick "delete
-   app data"; note which.
+   Expected along the way:
+   - the uninstaller asks to close the running app. Its pre-uninstall hook has already run
+     `--restore-networking` at that point.
+   - the "delete app data" box decides whether `%APPDATA%\io.github.mosb2bls.edgeclient` and
+     `%LOCALAPPDATA%\io.github.mosb2bls.edgeclient` (node list, settings, logs) survive.
+     Note which. The keychain entry (Windows Credential Manager) is separate.
 4. Reinstall, then install the helper (W-HELPER), connect in **TUN** and uninstall the app
    while connected. **Pass:**
    - exactly **one** UAC prompt (helper removal), which you accept;
@@ -207,12 +227,12 @@ legitimately differ.
 
 ### W-SYSPROXY — system proxy mode
 
-1. `Snapshot before`. `Loc` → your local country.
+1. `Snapshot before`. `Loc` → `exit=same`.
 2. Import your nodes. Capture mode System proxy, Rule, connect (HY2). **Pass:**
    - Windows Settings → Network & internet → Proxy shows a manual proxy `127.0.0.1:<port>`, setup script off;
-   - `Loc` → `loc=GB`, and `Cn` → `200`;
+   - `Loc` → `exit=DIFFERENT`, and `Cn` → `cn=200`;
    - Edge / Chrome open a non-CN site and a CN site.
-3. Switch node to REALITY, then Rule ↔ Global. **Pass:** `Loc` → `loc=GB` after each switch.
+3. Switch node to REALITY, then Rule ↔ Global. **Pass:** `Loc` → `exit=DIFFERENT` after each switch.
 4. Disconnect. **Pass:** `Snapshot after before` → identical. The Proxy settings page
    looks as before.
 
@@ -229,7 +249,10 @@ this mode. This is documented; use TUN for whole-device protection.
    - `Get-ChildItem "$env:ProgramFiles\Lynnk\Helper" | Select-Object Name` → `edge-helper.exe`, `sing-box.exe`;
    - as your normal user, `Get-ChildItem "$env:ProgramData\Lynnk\Helper"` → access denied;
    - `Test-Path '\\.\pipe\io.github.mosb2bls.edgeclient.helper'` → `True`;
-   - the app shows the helper as installed and running.
+   - the app shows the helper as installed **and running** (`get_helper_status` →
+     `running: true` with a version). Round 1 failed here with "Access is denied" on the pipe
+     (F-1, fixed by opening it with only the rights its access list grants). If it fails,
+     report the `detail` text.
 3. Settings → Uninstall helper (one UAC prompt). **Pass:** the service is gone and both
    folders are gone.
 
@@ -238,11 +261,11 @@ this mode. This is documented; use TUN for whole-device protection.
 1. `Snapshot before`. Helper installed, capture mode TUN, Rule, connect HY2.
    **Pass:**
    - `Get-NetAdapter | Where-Object InterfaceDescription -like '*Wintun*'` → one adapter, Up;
-   - `LocDirect` → `loc=GB` (no proxy configured anywhere), and `Cn` → `200`;
+   - `LocDirect` → `exit=DIFFERENT` (no proxy configured anywhere), and `CnDirect` → `cn=200`;
    - `Resolve-DnsName example.com` answers;
    - Windows proxy settings untouched (`Snapshot during before` shows `internetSettings same`).
-2. Switch to REALITY, then Global. **Pass:** `LocDirect` → `loc=GB` each time. In Global,
-   `Cn` still → `200` (via the UK).
+2. Switch to REALITY, then Global. **Pass:** `LocDirect` → `exit=DIFFERENT` each time. In Global,
+   `CnDirect` still → `cn=200` (via the UK).
 3. Disconnect. **Pass:** `Snapshot after before` → identical (adapter gone, routes as
    before).
 
@@ -288,8 +311,10 @@ cross-check: ipleak.net in Edge shows no resolver from your ISP.
    (Get-NetTCPConnection -State Established | Where-Object { $_.RemoteAddress -match ':' -and $_.RemoteAddress -notmatch '^(::1|fe80|fdfe:dcba:9876)' }).Count
    ```
    **Pass:** `0`. Report the count only. In Edge, test-ipv6.com shows no IPv6.
-4. System-proxy mode: record what step 3 shows, as an observation only. IPv6 bypass is a
-   documented limitation of that mode.
+4. System-proxy mode: record what step 3 shows, as an observation only. Expected and
+   documented:
+   - IPv6 bypasses the proxy for apps that ignore it (`curl.exe -6` → 200);
+   - IPv6-only sites **fail** for apps that use the proxy.
 
 ### W-KILL — kill switch (elevated)
 
@@ -300,8 +325,8 @@ browser.
    ```powershell
    $end = (Get-Date).AddSeconds(20); while ((Get-Date) -lt $end) { Stop-Process -Name sing-box -Force -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 300 }
    ```
-   During the loop, in a second elevated window: `LocDirect` → no output or a failure
-   (no direct traffic). Then:
+   During the loop, in a second elevated window (run the §3.0 block there first):
+   `LocDirect` → `loc=FAILED` (no direct traffic). Then:
    ```powershell
    netsh wfp show filters file="$Snap\wfp.xml" | Out-Null; (Select-String -Path "$Snap\wfp.xml" -Pattern 'Lynnk kill switch' -SimpleMatch).Count
    ```
@@ -309,7 +334,7 @@ browser.
    - the count is > 0 and the download stalls;
    - the app shows Reconnecting with the kill switch active.
 2. After the loop ends. **Pass:**
-   - within ~30 s the app is Connected again, and `LocDirect` → `loc=GB`;
+   - within ~30 s the app is Connected again, and `LocDirect` → `exit=DIFFERENT`;
    - the same WFP count → 0.
 3. Helper crash while the kill switch is engaged: start the loop again and, during it, run
    `Stop-Process -Name edge-helper -Force`. **Pass:**
@@ -324,7 +349,7 @@ browser.
 1. **System proxy:**
    1. `Snapshot before`, then connect.
    2. `Stop-Process -Name $App.BaseName -Force`. **Expected:** the app's `sing-box.exe`
-      child survives on Windows, so `Loc` probably still → `loc=GB`. Record what you see.
+      child survives on Windows, so `Loc` probably still → `exit=DIFFERENT`. Record what you see.
       Either result is acceptable, but no traffic may go direct.
    3. Relaunch from the Start menu. **Pass:** a "previous network settings restored"
       notice, and `Snapshot after before` → identical.
@@ -334,7 +359,7 @@ browser.
    ```
    **Pass:** `0`, and `Snapshot after before` → identical.
 3. **TUN:** connect, then force-kill the app. **Pass:**
-   - `LocDirect` → `loc=GB` keeps working (the helper owns the session);
+   - `LocDirect` → `exit=DIFFERENT` keeps working (the helper owns the session);
    - relaunch → "re-attached to the running session";
    - Disconnect → `Snapshot after before` identical.
 
@@ -348,7 +373,7 @@ connected state:
 
 **Pass:**
 - after each one, `Snapshot after before` → identical;
-- after (b), `Loc` / `LocDirect` → your local country;
+- after (b), `Loc` / `LocDirect` → `exit=same`;
 - after (c), relaunching shows no recovery notice.
 
 ### W-RESTORE-PARTIAL — partial restore reporting, REQ-4 (elevated)
@@ -384,7 +409,7 @@ New-NetFirewallRule -DisplayName 'EdgeTest-BlockHY2' -Direction Outbound -Protoc
 
 **Pass:**
 - within ~30–40 s, a notification about switching to the REALITY node, and the app shows REALITY;
-- `Loc` / `LocDirect` → `loc=GB`, and no "all nodes failing".
+- `Loc` / `LocDirect` → `exit=DIFFERENT`, and no "all nodes failing".
 
 Then:
 
@@ -406,7 +431,7 @@ For System proxy and TUN, connected:
 - (b) Start → Power → Sleep, wait ≥ 2 min, wake.
 
 **Pass:**
-- within ~30 s of the network returning, `Loc` / `LocDirect` → `loc=GB`, and the state is
+- within ~30 s of the network returning, `Loc` / `LocDirect` → `exit=DIFFERENT`, and the state is
   Connected (Degraded or Reconnecting briefly is fine);
 - at most one failover switch, and no "restore incomplete";
 - TUN only: the W-DNSLEAK counters stay 0 on the physical adapter for DNS53u, DNS53t and
@@ -424,9 +449,9 @@ For System proxy and TUN, connected:
    Start the app. **Pass:** a recovery notice, then `Snapshot after before` → identical.
 2. **System proxy:** `Snapshot before`, connect, `shutdown /r /f /t 0`. After signing in,
    with launch at login off:
-   - **Expected:** `Loc` → FAILED (the proxy still points at the dead port; fail closed).
+   - **Expected:** `Loc` → `loc=FAILED` (the proxy still points at the dead port; fail closed).
 
-   Start the app. **Pass:** "previous network settings restored", `Loc` → local country,
+   Start the app. **Pass:** "previous network settings restored", `Loc` → `exit=same`,
    and `Snapshot after before` → identical. Repeat with launch at login **on**. **Pass:**
    restored at sign-in without opening anything.
 
@@ -440,11 +465,28 @@ For System proxy and TUN, connected:
    it connects with the last node and mode.
 3. While it runs, start the app again from the Start menu. **Pass:** still **one** tray
    icon (`(Get-Process -Name $App.BaseName).Count` → 1), and the Settings window opens.
-4. Launch at login OFF. **Pass:** the Run value is gone.
+4. Launch at login OFF. **Pass:** the Run value is gone, and so is Task Manager's record:
+   `Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run' -Name Lynnk -ErrorAction SilentlyContinue`
+   → nothing (round 1, M-2).
+5. Launch at login ON, then disable Lynnk in Task Manager → Startup apps.
+   **Pass:** Lynnk Settings now shows launch at login **off**. Turning it on in Lynnk again
+   → Task Manager shows **Enabled**.
 
-### W-SHELL — tray popover position and display scaling
+The single-instance plugin's message window (`…edgeclient-siw`) reports as "visible",
+15×15 at 0,0. That is by design: it's layered, transparent and a tool window, so nothing is
+drawn (round 1, M-3). Only report it if something actually shows in the top-left corner.
+
+### W-SHELL — tray popover position, display scaling, Settings title bar
 
 Windows 11 keeps the taskbar at the bottom.
+
+**Settings window title bar** (from SPEC 1.5.0, after the UI's custom title bar ships): there
+is no native Windows title bar.
+
+**Pass:**
+- the app's own bar drags the window, and double-click maximizes / restores;
+- minimize, maximize and close work, and close hides the window (the app keeps running in the tray);
+- the window can still be resized from its edges.
 
 **Steps:**
 - left-click the tray icon, both when it is pinned and when it is in the overflow (^) menu;

@@ -598,13 +598,23 @@ pub async fn reveal_diagnostics(app: AppHandle) -> ApiResult<()> {
 #[tauri::command]
 #[specta::specta]
 pub async fn get_settings(app: AppHandle) -> ApiResult<AppSettings> {
-    use tauri_plugin_autostart::ManagerExt;
     let mut settings = with_state(&app, |st| Ok(st.prefs.prefs.app.clone()))?;
-    // Report the real login item state (the user may have removed it in System Settings).
-    if let Ok(enabled) = app.autolaunch().is_enabled() {
+    // Report the real login item state (the user may have removed or disabled it in
+    // System Settings / Task Manager).
+    if let Some(enabled) = login_item_enabled(&app) {
         settings.launch_at_login = enabled;
     }
     Ok(settings)
+}
+
+/// Whether the OS will start the app at login. Windows: the `Run` value exists and
+/// Task Manager has not disabled it (`StartupApproved`).
+fn login_item_enabled(app: &AppHandle) -> Option<bool> {
+    use tauri_plugin_autostart::ManagerExt;
+    let enabled = app.autolaunch().is_enabled().ok()?;
+    #[cfg(windows)]
+    let enabled = enabled && !edge_winsys::startup::approved_disabled(edge_core::APP_NAME);
+    Some(enabled)
 }
 
 #[tauri::command]
@@ -618,10 +628,14 @@ pub async fn set_settings(app: AppHandle, settings: AppSettings) -> ApiResult<Ap
     }
     use tauri_plugin_autostart::ManagerExt;
     let autolaunch = app.autolaunch();
-    let currently = autolaunch.is_enabled().unwrap_or(false);
+    let currently = login_item_enabled(&app).unwrap_or(false);
     if settings.launch_at_login != currently {
         let r = if settings.launch_at_login { autolaunch.enable() } else { autolaunch.disable() };
         r.map_err(|e| AppError::new(ErrorCode::LaunchAtLoginFailed).with_detail(e.to_string()))?;
+        // Windows: drop Task Manager's approval record, so ON really starts the app
+        // and OFF leaves nothing behind (round 1, M-2).
+        #[cfg(windows)]
+        edge_winsys::startup::approved_clear(edge_core::APP_NAME);
     }
     with_state(&app, |st| Ok(st.prefs.update(|p| p.app = settings)?.app.clone()))
 }

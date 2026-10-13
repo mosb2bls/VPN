@@ -60,6 +60,10 @@ pub fn setup(app: &mut tauri::App) -> tauri::Result<()> {
     }
     if let Some(w) = handle.get_webview_window(SETTINGS) {
         let _ = w.set_title(&format!("{} Settings", edge_core::APP_NAME));
+        // Windows: the UI draws its own title bar (owner request E-1, SPEC 1.5.0);
+        // macOS keeps the native one with the traffic lights.
+        #[cfg(windows)]
+        let _ = w.set_decorations(false);
         let win = w.clone();
         let h = handle.clone();
         w.on_window_event(move |e| {

@@ -36,7 +36,7 @@ pub fn load_config() -> Result<HelperConfig, String> {
 /// (0x0012008B) — deliberately without FILE_APPEND_DATA, which on a pipe is
 /// FILE_CREATE_PIPE_INSTANCE.
 pub fn pipe_sddl(user_sid: &str) -> String {
-    format!("D:P(A;;GA;;;SY)(A;;0x0012008b;;;{user_sid})")
+    format!("D:P(A;;GA;;;SY)(A;;0x{:08x};;;{user_sid})", edge_winsys::PIPE_USER_GRANT)
 }
 
 /// `edge-helper serve`: run under the Service Control Manager.

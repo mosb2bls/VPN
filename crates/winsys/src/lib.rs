@@ -24,6 +24,8 @@ pub mod security;
 #[cfg(windows)]
 pub mod service;
 #[cfg(windows)]
+pub mod startup;
+#[cfg(windows)]
 pub mod wfp;
 
 /// Read a NUL-terminated wide string (not freed).
@@ -44,6 +46,18 @@ pub(crate) unsafe fn wide_to_string(p: *const u16) -> String {
 pub(crate) fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
+
+/// Helper pipe access rights (ADR-0007). The pipe DACL grants the user exactly
+/// `PIPE_USER_GRANT`: FILE_GENERIC_READ (READ_DATA | READ_EA | READ_ATTRIBUTES |
+/// READ_CONTROL | SYNCHRONIZE) + FILE_WRITE_DATA — deliberately **not**
+/// FILE_APPEND_DATA (= FILE_CREATE_PIPE_INSTANCE on a pipe), WRITE_EA or
+/// WRITE_ATTRIBUTES.
+pub const PIPE_USER_GRANT: u32 = 0x0012_008B;
+/// What the client asks for when opening the pipe: READ_DATA | WRITE_DATA |
+/// READ_ATTRIBUTES (GetNamedPipeServerProcessId) | SYNCHRONIZE. Must be a subset of
+/// `PIPE_USER_GRANT` — `GENERIC_WRITE` is not (it includes APPEND_DATA, WRITE_EA,
+/// WRITE_ATTRIBUTES) and was refused with "Access is denied" (Windows round 1, F-1).
+pub const PIPE_CLIENT_ACCESS: u32 = 0x0000_0001 | 0x0000_0002 | 0x0000_0080 | 0x0010_0000;
 
 /// Quote one argument so `CommandLineToArgvW` / the MSVC runtime parse it
 /// back unchanged (backslashes are literal except before a quote).
@@ -208,6 +222,15 @@ mod tests {
         assert_eq!(quote_arg(r"C:\dir with space\"), r#""C:\dir with space\\""#);
         assert_eq!(quote_arg(r#"a"b"#), r#""a\"b""#);
         assert_eq!(quote_arg(""), r#""""#);
+    }
+
+    #[test]
+    fn pipe_client_access_is_within_the_grant() {
+        assert_eq!(PIPE_CLIENT_ACCESS & !PIPE_USER_GRANT, 0, "client asks for rights the DACL does not grant");
+        assert_eq!(PIPE_USER_GRANT & 0x4, 0, "FILE_APPEND_DATA / CREATE_PIPE_INSTANCE must not be granted");
+        // GENERIC_WRITE's file mapping (FILE_GENERIC_WRITE) is NOT within the grant.
+        const FILE_GENERIC_WRITE: u32 = 0x0012_0116;
+        assert_ne!(FILE_GENERIC_WRITE & !PIPE_USER_GRANT, 0);
     }
 
     #[test]

@@ -54,7 +54,7 @@ jobs:
         run: npm run lint
       - name: TypeScript check
         run: npx tsc --noEmit -p .
-      - name: Windows test script runs (snapshot + compare)
+      - name: Windows test scripts run (snapshot + compare, exit check)
         if: runner.os == 'Windows'
         shell: powershell
         run: |
@@ -64,6 +64,13 @@ jobs:
           # 3 = a section differed between two runs seconds apart (possible on a
           # CI runner); only a script error (exit 1) fails this step.
           if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3) { exit 1 }
+          # exit-check.ps1: baseline + compare must say "exit=same" (same runner, direct).
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\exit-check.ps1 -Via direct -SaveBaseline -Dir "$env:RUNNER_TEMP"
+          $out = powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\exit-check.ps1 -Via direct -Dir "$env:RUNNER_TEMP"
+          Write-Output $out
+          if ("$out" -notmatch 'exit=same') { exit 1 }
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\exit-check.ps1 -Via system -Dir "$env:RUNNER_TEMP"
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts\windows\exit-check.ps1 -Via system -Cn
           exit 0
 
   bundle-macos:

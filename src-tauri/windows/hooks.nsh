@@ -23,3 +23,9 @@
   edge_skip_helper:
   Pop $0
 !macroend
+
+; Task Manager's "startup approved" record for our login item (HKCU) is not
+; removed with the Run value; drop it with the app (round 1, M-2).
+!macro NSIS_HOOK_POSTUNINSTALL
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "${PRODUCTNAME}"
+!macroend

@@ -7,6 +7,7 @@
 //! before sending anything (Microsoft Learn, CreateNamedPipeW).
 
 use std::fs::File;
+use std::os::windows::fs::OpenOptionsExt;
 use std::os::windows::io::{AsRawHandle, FromRawHandle};
 use std::time::{Duration, Instant};
 
@@ -94,10 +95,12 @@ impl Drop for Conn {
 }
 
 /// Open the pipe as a client, waiting up to `wait` while all instances are busy.
+/// Asks for exactly `PIPE_CLIENT_ACCESS` (not GENERIC_READ | GENERIC_WRITE, which
+/// the pipe DACL refuses — see `crate::PIPE_USER_GRANT`).
 pub fn connect(name: &str, wait: Duration) -> std::io::Result<File> {
     let start = Instant::now();
     loop {
-        match std::fs::OpenOptions::new().read(true).write(true).open(name) {
+        match std::fs::OpenOptions::new().access_mode(crate::PIPE_CLIENT_ACCESS).open(name) {
             Ok(f) => return Ok(f),
             Err(e) if e.raw_os_error() == Some(ERROR_PIPE_BUSY as i32) && start.elapsed() < wait => {
                 let w = wide(name);
@@ -113,4 +116,54 @@ pub fn server_pid(f: &File) -> Option<u32> {
     let mut pid = 0u32;
     let ok = unsafe { GetNamedPipeServerProcessId(f.as_raw_handle() as HANDLE, &mut pid) };
     (ok != 0).then_some(pid)
+}
+
+/// Real pipe with the helper's DACL, opened by the current (non-SYSTEM) user —
+/// the round-1 F-1 regression test. Runs on the Windows CI runner.
+#[cfg(test)]
+mod tests {
+    use std::io::{BufRead, BufReader, Write};
+    use std::time::Duration;
+
+    use super::*;
+
+    #[test]
+    fn user_can_open_helper_pipe_but_not_with_generic_write() {
+        let sid = crate::security::current_user_sid().expect("current user SID");
+        let name = format!(r"\\.\pipe\edge-winsys-test-{}", std::process::id());
+        let sddl = format!("D:P(A;;GA;;;SY)(A;;0x{:08x};;;{sid})", crate::PIPE_USER_GRANT);
+        let (ready_tx, ready_rx) = std::sync::mpsc::channel();
+        let server_name = name.clone();
+        let server = std::thread::spawn(move || {
+            // The listener (raw security descriptor) stays on this thread.
+            let mut listener = Listener::new(&server_name, &sddl).expect("listener");
+            let _ = ready_tx.send(());
+            let conn = listener.accept().expect("accept");
+            assert!(conn.client_pid().is_some());
+            let mut line = String::new();
+            BufReader::new(conn.file()).read_line(&mut line).unwrap();
+            conn.file().write_all(format!("echo {line}").as_bytes()).unwrap();
+            // Second client: same pipe, GENERIC_READ | GENERIC_WRITE (old client code).
+            listener.accept().ok().map(|_| ())
+        });
+        ready_rx.recv().unwrap();
+        std::thread::sleep(Duration::from_millis(200));
+        let f = connect(&name, Duration::from_secs(5)).expect("client connect with PIPE_CLIENT_ACCESS");
+        assert_eq!(server_pid(&f), Some(std::process::id()));
+        (&f).write_all(b"ping\n").unwrap();
+        let mut reply = String::new();
+        BufReader::new(&f).read_line(&mut reply).unwrap();
+        assert_eq!(reply.trim(), "echo ping");
+        drop(f);
+        std::thread::sleep(Duration::from_millis(200));
+        let denied = std::fs::OpenOptions::new().read(true).write(true).open(&name);
+        assert_eq!(
+            denied.err().and_then(|e| e.raw_os_error()),
+            Some(5),
+            "GENERIC_WRITE must be refused by the DACL (ERROR_ACCESS_DENIED)"
+        );
+        // Unblock the server's second accept.
+        let _ = connect(&name, Duration::from_secs(2));
+        let _ = server.join();
+    }
 }

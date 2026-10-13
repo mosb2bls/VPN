@@ -1,6 +1,6 @@
 # Lynnk — Backend ↔ UI Interface Specification
 
-**Spec version:** 1.4.4
+**Spec version:** 1.5.0
 **Status:** approved; includes REQ-1 to REQ-4 (Phase B1). "1.0.0" marks a breaking change, not feature completeness — most commands are still stubs.
 **Generated bindings:** `src/api/bindings.ts` (from `src-tauri/src/api/*`, via tauri-specta `=2.0.0-rc.25`)
 
@@ -12,6 +12,7 @@ the disagreement is a backend bug — file a REQ.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.5.0 | 2026-10-13 | **Windows round-1 fixes + Settings title bar.** (1) **Windows: the `settings` window has no native title bar** (owner request E-1): the UI draws its own and uses the window API — newly granted to the `settings` window: `core:window:allow-start-dragging` (`data-tauri-drag-region`), `allow-minimize`, `allow-toggle-maximize`, `allow-close` (close → hides, as before), `allow-is-maximized`. macOS unchanged (native title bar). (2) Windows helper pipe now opens (F-1: TUN works again — was `HELPER_UNREACHABLE` "Access is denied"). (3) `get_settings.launchAtLogin` on Windows is false if the login item is disabled in Task Manager; turning it on or off in the app clears Task Manager's record (M-2). (4) Windows installer publisher "Lynnk" (M-1). No type changes. |
 | 1.4.4 | 2026-10-12 | **Behaviour:** product renamed to **Lynnk** (owner decision): `getAppInfo().appName`, window titles ("Lynnk", "Lynnk Settings"), tray tooltip / menu ("Quit Lynnk"), diagnostics file name, macOS admin prompt text ("Lynnk wants to install or remove its network helper."), Windows install folders (`%LOCALAPPDATA%\Lynnk`, `%ProgramFiles%\Lynnk\Helper`, `%ProgramData%\Lynnk\Helper`), service display name "Lynnk Helper". Unchanged: identifier `io.github.mosb2bls.edgeclient` (keychain, data dirs, helper paths on macOS, Windows service name), pf anchor. No type changes. |
 | 1.4.3 | 2026-10-12 | **Behaviour:** single instance — launching the app while it runs (e.g. Start menu while the login item runs) opens the running app's Settings window instead of a second instance. Windows uninstaller first restores networking (`--restore-networking`) and removes the TUN helper service if installed (one UAC prompt). No type changes. |
 | 1.4.2 | 2026-10-12 | **Behaviour (B3.2, Windows — untested):** `install_helper` / `uninstall_helper` / `get_helper_status` work on Windows (UAC prompt → Windows service); `connect` in TUN mode runs through it (Wintun, IPv6 captured and rejected, WFP kill switch on core crash, re-attach after app crash) — same contract as macOS. Install errors carry the helper's message in `detail`. ADR-0007. No type changes. |
@@ -362,7 +363,7 @@ routes on the window label.
 | Label | Size | Behaviour |
 |---|---|---|
 | `popover` | 340 × 480 logical, fixed | Frameless, **opaque with the native OS shadow** (owner decision), not resizable, always on top, not in the taskbar, visible on all macOS Spaces, first click accepted. Tray icon **left-click toggles** it; it is placed next to the tray icon (below the macOS menu bar; next to the Windows taskbar on whichever edge, on the icon's monitor) and kept fully inside the monitor's work area. **Hides on blur** (losing focus); a tray click within 300 ms of a blur-hide counts as "close", not "reopen". Esc → the UI calls `hide_popover`. Every hide, for any reason, is followed by `popoverHidden`; a webview `blur` is **not** guaranteed when the tray icon toggles it closed (macOS). File drag-and-drop disabled. |
-| `settings` | 760 × 560, min 640 × 480, resizable | Normal decorations, title "Lynnk Settings", centred. Close button hides it; the app keeps running in the tray. File drag-and-drop **enabled** (QR image drop → `import_qr_image({kind:"path"})`). |
+| `settings` | 760 × 560, min 640 × 480, resizable | macOS: normal decorations. **Windows (1.5.0): no native title bar** — the UI provides one (drag region via `data-tauri-drag-region`; minimize / maximize toggle / close via the window API; close hides). Title "Lynnk Settings" (taskbar / Alt-Tab), centred. Close button hides it; the app keeps running in the tray. File drag-and-drop **enabled** (QR image drop → `import_qr_image({kind:"path"})`). |
 
 macOS: the app is a menu-bar (accessory) app — **no Dock icon**; the settings window still
 focuses normally.
