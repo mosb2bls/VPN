@@ -78,7 +78,8 @@ export function NodeSheet({
 
   return (
     <motion.div
-      className="absolute inset-0 z-20"
+      // Clip the sheet's slide-in transform and shadow to the popover (F-2).
+      className="absolute inset-0 z-20 overflow-hidden"
       onKeyDown={onKey}
       initial={animate ? "closed" : false}
       animate="open"

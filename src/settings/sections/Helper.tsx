@@ -65,7 +65,7 @@ export function HelperSection() {
               <li>Windows shows a User Account Control prompt. The helper is installed as a Windows service.</li>
             ) : (
               <>
-                <li>macOS asks for your administrator password (“{APP_NAME} wants to make changes”).</li>
+                <li>macOS asks for your administrator password (“{APP_NAME} wants to install or remove its network helper.”).</li>
                 <li>macOS may show a “Background Items Added” notification — that is the helper.</li>
               </>
             )}

@@ -188,7 +188,7 @@ export function Popover() {
     <motion.div
       key={openSeq}
       ref={wrapRef}
-      className="relative"
+      className="relative overflow-hidden"
       style={{ width: 340, height: 480 }}
       initial={instant ? false : { opacity: 0 }}
       animate={{ opacity: hiding ? 0 : 1 }}

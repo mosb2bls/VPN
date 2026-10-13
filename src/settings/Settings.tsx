@@ -12,6 +12,7 @@ import { derivePopoverView, TONE_CLASS } from "../popover/view";
 import { selectTunLabel, useApp } from "../state/store";
 import { useMotionOk } from "../ui/motionGate";
 import { SettingsNav } from "./nav";
+import { TitleBar } from "./TitleBar";
 import { AboutSection } from "./sections/About";
 import { ConnectionSection } from "./sections/Connection";
 import { FailoverSection } from "./sections/Failover";
@@ -39,6 +40,8 @@ const num = (i: number) => String(i + 1).padStart(2, "0");
 export function Settings() {
   const [section, setSection] = useState<SettingsSection>("nodes");
   const animate = useMotionOk();
+  // Windows: no native title bar (SPEC 1.5.0) — draw our own.
+  const windows = useApp((s) => s.appInfo?.platform === "windows");
 
   // openSettings(section) from the popover or tray (SPEC §2.8).
   useEffect(() => {
@@ -48,7 +51,9 @@ export function Settings() {
   }, []);
 
   return (
-    <div className="paper-grain grid h-full min-h-0 grid-cols-[184px_1fr] text-ink">
+    <div className="paper-grain flex h-full min-h-0 flex-col text-ink">
+      {windows && <TitleBar />}
+      <div className="grid min-h-0 flex-1 grid-cols-[184px_1fr]">
       <nav aria-label="Settings sections" className="flex min-h-0 flex-col border-r border-line px-3 pt-5 pb-4">
         <span className="label px-2 pb-4">{APP_NAME}</span>
         <ul className="flex flex-col">
@@ -99,6 +104,7 @@ export function Settings() {
           </motion.div>
         </AnimatePresence>
       </main>
+      </div>
     </div>
   );
 }

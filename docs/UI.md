@@ -1,7 +1,7 @@
 # Lynnk — UI notes
 
 Owner: UI agent. Approved design decisions, tokens and frontend structure.
-Built against **SPEC v1.4.2**.
+Built against **SPEC v1.5.0**.
 
 ## 1. Approved decisions (U0)
 
@@ -41,6 +41,9 @@ Built against **SPEC v1.4.2**.
 | D33 | Windows TUN + helper **enabled** (SPEC 1.4.2, owner) and labelled `EXPERIMENTAL — UNTESTED ON WINDOWS` (mono uppercase, ink, no new colour): popover under the Capture switch (and on the HELPER MISSING notice), Settings › Connection, Settings › Helper; TUN option tooltip. One flag: `WINDOWS_TUN_EXPERIMENTAL` in `src/lib/experimental.ts`. Supersedes D32. |
 | D34 | Helper install / uninstall failures show `AppError.detail` under the message as selectable mono text, with the error code, for test reports. |
 | D35 | **App name is Lynnk** (owner). The UI takes it from one constant, `APP_NAME` in `src/lib/brand.ts` (window title in `index.html`). OS-level names (window titles, admin / UAC dialogs, bundle, helper service) come from the backend's `APP_NAME` / `tauri.conf.json`. |
+| D36 | **No page-level scrolling in app windows** (Windows F-2): `html[data-window]` (set in `main.tsx` from the window label) has `overflow: hidden`; the popover root and the node sheet clip their content. Cause found: the sheet's 40 px slide-in reached 508 px in a 480 px window, which made Windows show its classic scrollbars. |
+| D37 | **App-styled scrollbars** (E-1): thin, ink at 30 % (55 % on hover), transparent track — standard `scrollbar-width` / `scrollbar-color` for WebView2, `::-webkit-scrollbar` for WebKit. |
+| D38 | **Settings title bar on Windows** (E-1, SPEC 1.5.0): 32 px paper strip, hairline below, mono `LYNNK — SETTINGS`; 46 × 32 controls Minimize / Maximize-Restore / Close with 1 px ink icons; Close hovers vermilion with a paper icon. Drag and double-click-to-maximize via the window API (`windowControls` in `client.ts`). macOS keeps its native title bar. |
 | D8 | **NOT RESTORED** (partial restore, SPEC §2.7): shown whenever `lastRestore.fullyRestored` is false and the app is not proxying; never looks like OFF. Lists each failed/skipped item, offers Retry (Restore networking) and explains `--restore-networking`. Only an engaged kill switch (BLOCKED) ranks above it. |
 
 ## 2. Frontend structure

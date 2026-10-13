@@ -63,6 +63,36 @@
 }
 
 @layer base {
+  /* App windows (popover, settings) never scroll at page level: each manages its own
+     scroll areas. Windows shows classic scrollbars whenever anything overflows, even
+     for a moment (F-2: node sheet sliding in). The dev page still scrolls. */
+  html[data-window],
+  html[data-window] body {
+    overflow: hidden;
+  }
+
+  /* App-styled scrollbars (E-1): thin, ink on paper, no track. Standard properties for
+     WebView2 / Chromium; the ::-webkit-scrollbar rules cover WebKit (macOS). */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(22 21 18 / 0.35) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: rgb(22 21 18 / 0.3);
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(22 21 18 / 0.55);
+  }
+
   /* Each window's content fills the whole window (no blank area below). */
   html,
   body,

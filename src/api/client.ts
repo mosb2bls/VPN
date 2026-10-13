@@ -69,6 +69,21 @@ export function windowLabel(): string | null {
   }
 }
 
+/**
+ * Window chrome for the Settings window's custom title bar on Windows (SPEC 1.5.0:
+ * start-dragging, minimize, toggle-maximize, close, is-maximized). No-ops outside Tauri.
+ */
+export const windowControls = {
+  available: IN_TAURI,
+  startDragging: () => (IN_TAURI ? getCurrentWindow().startDragging() : Promise.resolve()),
+  minimize: () => (IN_TAURI ? getCurrentWindow().minimize() : Promise.resolve()),
+  toggleMaximize: () => (IN_TAURI ? getCurrentWindow().toggleMaximize() : Promise.resolve()),
+  /** The backend's close handler hides the window (or quits when close-to-tray is off). */
+  close: () => (IN_TAURI ? getCurrentWindow().close() : Promise.resolve()),
+  isMaximized: () => (IN_TAURI ? getCurrentWindow().isMaximized() : Promise.resolve(false)),
+  onResized: (cb: () => void): Promise<Unlisten> => (IN_TAURI ? getCurrentWindow().onResized(cb) : Promise.resolve(() => {})),
+};
+
 export function isNotImplemented(e: AppError | null | undefined): boolean {
   return e?.code === "NOT_IMPLEMENTED";
 }
