@@ -123,7 +123,8 @@ export type ScenarioId =
   | "restore_incomplete"
   | "restore_incomplete_proxy"
   | "unprotected"
-  | "all_down";
+  | "all_down"
+  | "helper_restarted";
 
 export const SCENARIOS: { id: ScenarioId; label: string }[] = [
   { id: "off", label: "OFF" },
@@ -145,6 +146,7 @@ export const SCENARIOS: { id: ScenarioId; label: string }[] = [
   { id: "restore_incomplete_proxy", label: "NOT RESTORED · proxy" },
   { id: "unprotected", label: "UNPROTECTED · direct fallback" },
   { id: "all_down", label: "ALL NODES DOWN" },
+  { id: "helper_restarted", label: "RECONNECTING · TUN, helper restarted" },
 ];
 
 // ─────────────────────────────── helpers ────────────────────────────────
@@ -1410,6 +1412,16 @@ export class MockEngine {
         why = reason;
         break;
       }
+      case "helper_restarted":
+        // SPEC 1.5.2: the helper restarted, its TUN session ended — nothing captures traffic.
+        this.installedHelper();
+        s = live({
+          state: "reconnecting",
+          captureMode: "tun",
+          lastError: appError("HELPER_UNREACHABLE", { detail: "the helper restarted; its TUN session ended" }),
+        });
+        why = "Helper restarted — reconnecting";
+        break;
       case "all_down":
         s = live({ state: "degraded", lastError: appError("ALL_NODES_FAILED", { recoverable: false }) });
         why = "All nodes failing — traffic stays blocked until a node recovers";
@@ -1436,7 +1448,10 @@ export class MockEngine {
         break;
       }
     }
-    if (id !== "restore_incomplete" && id !== "restore_incomplete_proxy") {
+    if (id === "helper_restarted") {
+      this.held.clear(); // TUN session and kill switch are gone
+      s = { ...s, ...this.flagsFromHeld(false) };
+    } else if (id !== "restore_incomplete" && id !== "restore_incomplete_proxy") {
       // Keep the mock journal consistent with the snapped state.
       const holding = ["connected", "degraded", "failing_over", "reconnecting", "disconnecting"].includes(s.state) || id === "blocked";
       this.held.clear();

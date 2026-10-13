@@ -8,7 +8,7 @@ import { on } from "../api/client";
 import type { SettingsSection } from "../api/bindings";
 import { navTimeline as N } from "../design/motion";
 import { protocolBadge } from "../lib/format";
-import { derivePopoverView, TONE_CLASS } from "../popover/view";
+import { derivePopoverView, shownNodeId, TONE_CLASS } from "../popover/view";
 import { selectTunLabel, useApp } from "../state/store";
 import { useMotionOk } from "../ui/motionGate";
 import { SettingsNav } from "./nav";
@@ -119,7 +119,7 @@ function RailStatus() {
   const tunLabel = useApp(selectTunLabel);
   if (!status) return null;
   const v = derivePopoverView(status, reason, helper, restore, nodes, { tunLabel });
-  const node = nodes.find((n) => n.id === (status.activeNodeId ?? status.selectedNodeId));
+  const node = nodes.find((n) => n.id === shownNodeId(status));
   return (
     <div className="flex flex-col gap-0.5">
       <span className="label text-ink-muted">Status</span>

@@ -73,8 +73,29 @@ const PROXYING = new Set(["connected", "degraded", "failing_over", "reconnecting
 const nodeName = (id: string | null | undefined) => state.nodes.find((n) => n.id === id)?.name ?? "unknown node";
 
 /** Apply a Status returned by a command (events usually follow, harmless twice). */
+/**
+ * O-5 (Windows round 3): an incomplete restore leaves "Networking not fully restored" as
+ * the last event. When a later restore completes, say so, so the popover's Last line no
+ * longer shows the stale failure. Reports may arrive via `restoreReportChanged` or inside
+ * a Status, so both paths go through here.
+ */
+let restoreWasIncomplete = false;
+function noteRestore(report: RestoreReport | null) {
+  if (!report) return;
+  if (!report.fullyRestored) {
+    if (restoreWasIncomplete && state.restore?.at === report.at) return; // already reported
+    restoreWasIncomplete = true;
+    const bad = report.items.filter((i) => i.result === "failed" || i.result === "skipped");
+    pushActivity("error", `Networking not fully restored: ${bad.map((i) => i.label).join(", ")}`, undefined, report.at);
+  } else if (restoreWasIncomplete) {
+    restoreWasIncomplete = false;
+    pushActivity("info", "Network settings restored — everything is back to normal", undefined, report.at);
+  }
+}
+
 export function applyStatus(status: Status, reason?: string | null) {
   const prev = state.status;
+  if (status.lastRestore && status.lastRestore.at !== state.restore?.at) noteRestore(status.lastRestore);
   set({
     status,
     restore: status.lastRestore,
@@ -111,6 +132,8 @@ export async function startStore() {
       pushActivity(p.kind === "switched_to_direct" ? "error" : p.kind === "suppressed" ? "warn" : "info", p.reason, undefined, p.at),
     ),
     on("activeNodeChanged", (p) => {
+      // Keep Status in step even if no statusChanged follows (Windows O-8).
+      if (state.status) set({ status: { ...state.status, activeNodeId: p.nodeId } });
       // Only a live switch between nodes; connect/disconnect also emit this (null ↔ id).
       if (p.cause === "manual" && p.nodeId && p.previousNodeId) pushActivity("info", `Switched to ${nodeName(p.nodeId)}`);
     }),
@@ -126,11 +149,8 @@ export async function startStore() {
       pushActivity(p.report.outcome === "restore_incomplete" ? "error" : "info", text, undefined, p.report.at);
     }),
     on("restoreReportChanged", (p) => {
+      if (p.report.at !== state.restore?.at) noteRestore(p.report);
       set({ restore: p.report });
-      if (!p.report.fullyRestored) {
-        const bad = p.report.items.filter((i) => i.result === "failed" || i.result === "skipped");
-        pushActivity("error", `Networking not fully restored: ${bad.map((i) => i.label).join(", ")}`, undefined, p.report.at);
-      }
     }),
     // Popover shown from the tray (popover window only): refresh in case anything was missed.
     on("popoverShown", () => {
@@ -159,6 +179,8 @@ export async function startStore() {
     recovery: status.status === "ok" ? status.data.lastRecovery : null,
     restore: status.status === "ok" ? status.data.lastRestore : null,
   });
+  // An incomplete restore persisted from an earlier run: a later full restore should say so (O-5).
+  if (state.restore && !state.restore.fullyRestored) restoreWasIncomplete = true;
 }
 
 export function useApp<T>(select: (s: AppState) => T): T {

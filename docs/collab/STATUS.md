@@ -46,7 +46,7 @@ Each agent edits only its own section.
 ## UI
 
 - **Phase/step:** U4 — checking screens against the real backend (needs owner runs of the real app). U2, U3 complete.
-- **SPEC version:** 1.5.0 (Windows Settings title bar; F-2 popover scrollbars fixed; app-styled scrollbars; dev routes `#popover` / `#settings`)
+- **SPEC version:** 1.5.2 (Windows round 3: O-8 carrying node shown on fallback, O-5 restore success replaces stale failure; TUN reconnect-without-kill-switch warning)
 - **Real / stubbed:** `src/api/client.ts` wraps `bindings.ts` (real inside Tauri, mock in a
   browser; `VITE_USE_MOCK` overrides). Mock simulates every SPEC command, event and error
   code. The `popover` window renders the designed popover (`src/popover/`: all states,

@@ -25,7 +25,7 @@ import { MotionGate, useMotionOk } from "../ui/motionGate";
 import { Rolling } from "../ui/Rolling";
 import { Swap } from "../ui/Swap";
 import { NodeSheet } from "./NodeSheet";
-import { TONE_CLASS, derivePopoverView, isProxying, type Action, type Notice, type Tone } from "./view";
+import { TONE_CLASS, carryingNodeId, derivePopoverView, isProxying, shownNodeId, type Action, type Notice, type Tone } from "./view";
 import { APP_NAME } from "../lib/brand";
 
 const ROUTING = [
@@ -163,7 +163,9 @@ export function Popover() {
     else if (a === "open_safety") void run(commands.openSettings("safety"));
   };
 
-  const shown = status ? nodes.find((n) => n.id === (status.activeNodeId ?? status.selectedNodeId)) : undefined;
+  const shown = status ? nodes.find((n) => n.id === shownNodeId(status)) : undefined;
+  /** Primary node while on the fallback (O-8: "on fallback from …"). */
+  const primary = status?.failover && !status.failover.direct ? nodes.find((n) => n.id === status.failover!.primaryNodeId) : undefined;
   const tunLabel = useApp(selectTunLabel);
   const view = status ? derivePopoverView(status, reason, helper, restore, nodes, { tunLabel }) : null;
   /** Direct fallback active: no node carries traffic (SPEC 1.4.0). */
@@ -236,7 +238,18 @@ export function Popover() {
               onClick={() => (nodes.length ? setSheet(true) : act("open_nodes"))}
             >
               <MetaLabel muted>
-                <Swap k={directFallback ? "direct" : view.onFallback ? "fallback" : "node"}>{directFallback ? "Node · not in use" : view.onFallback ? "Node · on fallback" : "Node"}</Swap>
+                {(() => {
+                  const t = directFallback
+                    ? "Node · not in use"
+                    : view.onFallback
+                      ? `Node · on fallback${primary ? ` from ${primary.name}` : ""}`
+                      : "Node";
+                  return (
+                    <Swap k={t} className="max-w-full">
+                      <span className="block truncate">{t}</span>
+                    </Swap>
+                  );
+                })()}
               </MetaLabel>
               <span className="mt-1 flex items-center gap-2">
                 {/* Motion moment 3: on a node change the row slides to the new node. */}
@@ -341,7 +354,7 @@ export function Popover() {
 
       <AnimatePresence>
         {sheet && status && (
-          <NodeSheet key="sheet" nodes={nodes} selectedId={status.selectedNodeId} activeId={status.activeNodeId} onClose={() => setSheet(false)} />
+          <NodeSheet key="sheet" nodes={nodes} selectedId={status.selectedNodeId} activeId={carryingNodeId(status)} onClose={() => setSheet(false)} />
         )}
       </AnimatePresence>
       </MotionGate.Provider>

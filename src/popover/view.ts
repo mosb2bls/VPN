@@ -53,6 +53,21 @@ export function isProxying(s: Status) {
   return PROXYING.includes(s.state);
 }
 
+/**
+ * The node carrying traffic (Windows O-8). While on the fallback, `failover` names it
+ * definitively; otherwise `activeNodeId`. Null when proxying through no node (direct
+ * fallback) or when not proxying.
+ */
+export function carryingNodeId(s: Status): string | null {
+  if (s.failover) return s.failover.direct ? null : s.failover.fallbackNodeId || s.activeNodeId;
+  return s.activeNodeId;
+}
+
+/** The node to show: the one carrying traffic, else the user's selection. */
+export function shownNodeId(s: Status): string | null {
+  return (s.failover?.direct ? null : carryingNodeId(s)) ?? s.selectedNodeId;
+}
+
 export const TONE_CLASS: Record<Tone, string> = {
   ink: "text-ink",
   amber: "text-mustard-text",
@@ -70,7 +85,7 @@ export function derivePopoverView(
   /** Experimental label for TUN / helper on this platform (Windows), or null. */
   opts: { tunLabel?: string | null } = {},
 ): PopoverView {
-  const shown = nodes.find((n) => n.id === (status.activeNodeId ?? status.selectedNodeId));
+  const shown = nodes.find((n) => n.id === shownNodeId(status));
   const proxying = isProxying(status);
   const restoreIncomplete = !!restore && !restore.fullyRestored && !proxying && status.state !== "connecting";
   const helperMissing = status.captureMode === "tun" && helper !== null && !helper.installed;
@@ -245,8 +260,20 @@ export function derivePopoverView(
       return { ...busy("DEGRADED", "Health checks failing"), notice: proxyGap, primary: outline("DISCONNECT", "disconnect") };
     case "failing_over":
       return { ...busy("FAILING OVER", "Switching node"), primary: outline("DISCONNECT", "disconnect") };
-    case "reconnecting":
-      return { ...busy("RECONNECTING", "Restarting the proxy core"), notice: proxyGap, primary: outline("DISCONNECT", "disconnect") };
+    case "reconnecting": {
+      // SPEC 1.5.2: after a helper restart the TUN session and kill switch are gone while
+      // reconnecting — nothing captures traffic, so it is briefly unprotected. Say so.
+      const tunGap: Notice | null =
+        status.captureMode === "tun" && !status.tunActive && !status.killSwitchActive
+          ? {
+              tone: "warn",
+              title: "Traffic is not protected right now",
+              lines: [status.lastError?.message ?? "The TUN session ended.", `Until ${APP_NAME} reconnects, apps use your normal connection.`],
+              links: [],
+            }
+          : null;
+      return { ...busy("RECONNECTING", "Restarting the proxy core"), notice: proxyGap ?? tunGap, primary: outline("DISCONNECT", "disconnect") };
+    }
     case "direct":
       return { ...base, key: "direct", word: "DIRECT", tone: "hollow", sub: "NOT PROXIED — NO PROTECTION", subMono: true, primary: outline("TURN OFF", "disconnect") };
     case "disconnecting":

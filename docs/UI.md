@@ -1,7 +1,7 @@
 # Lynnk — UI notes
 
 Owner: UI agent. Approved design decisions, tokens and frontend structure.
-Built against **SPEC v1.5.0**.
+Built against **SPEC v1.5.2**.
 
 ## 1. Approved decisions (U0)
 
@@ -44,6 +44,9 @@ Built against **SPEC v1.5.0**.
 | D36 | **No page-level scrolling in app windows** (Windows F-2): `html[data-window]` (set in `main.tsx` from the window label) has `overflow: hidden`; the popover root and the node sheet clip their content. Cause found: the sheet's 40 px slide-in reached 508 px in a 480 px window, which made Windows show its classic scrollbars. |
 | D37 | **App-styled scrollbars** (E-1): thin, ink at 30 % (55 % on hover), transparent track — standard `scrollbar-width` / `scrollbar-color` for WebView2, `::-webkit-scrollbar` for WebKit. |
 | D38 | **Settings title bar on Windows** (E-1, SPEC 1.5.0): 32 px paper strip, hairline below, mono `LYNNK — SETTINGS`; 46 × 32 controls Minimize / Maximize-Restore / Close with 1 px ink icons; Close hovers vermilion with a paper icon. Drag and double-click-to-maximize via the window API (`windowControls` in `client.ts`). macOS keeps its native title bar. |
+| D39 | **Node carrying traffic** (Windows O-8): one rule, `carryingNodeId()` / `shownNodeId()` in `popover/view.ts` — while `status.failover` is set (not direct) it is `failover.fallbackNodeId`, else `activeNodeId`, else the selection. Used by the popover (corner `REALITY · TCP 443`, label `NODE · ON FALLBACK FROM <primary>`), node sheet, settings rail and Nodes list. The store also applies `activeNodeChanged` to its status copy. |
+| D40 | **Restore success replaces the stale failure** (Windows O-5): when a full restore follows an incomplete one (event or status, also after a restart), the activity log adds "Network settings restored — everything is back to normal", which becomes the popover's Last line. |
+| D41 | **TUN reconnecting without kill switch** (SPEC 1.5.2, helper restarted): RECONNECTING + warn notice "Traffic is not protected right now" with the error message and "Until Lynnk reconnects, apps use your normal connection." |
 | D8 | **NOT RESTORED** (partial restore, SPEC §2.7): shown whenever `lastRestore.fullyRestored` is false and the app is not proxying; never looks like OFF. Lists each failed/skipped item, offers Retry (Restore networking) and explains `--restore-networking`. Only an engaged kill switch (BLOCKED) ranks above it. |
 
 ## 2. Frontend structure

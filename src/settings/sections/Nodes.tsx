@@ -9,6 +9,7 @@ import { HoldButton } from "../../ui/HoldButton";
 import { Button, ErrorNote, Note, SectionHeader } from "../kit";
 import { NodeEditor } from "../nodes/NodeEditor";
 import { ImportResultNote, LINK_RULES, PasteLinks, QrImport } from "../nodes/ImportPanels";
+import { carryingNodeId } from "../../popover/view";
 
 type Panel = { kind: "none" } | { kind: "paste" } | { kind: "qr" } | { kind: "add" } | { kind: "edit"; id: string };
 type Test = { kind: "testing" } | { kind: "error"; error: AppError };
@@ -23,7 +24,7 @@ export function NodesSection() {
   const [clipBusy, setClipBusy] = useState(false);
   const [tests, setTests] = useState<Record<string, Test>>({});
 
-  const activeId = status?.activeNodeId ?? null;
+  const activeId = status ? carryingNodeId(status) : null;
   const connected = !!activeId;
 
   const clipboard = async () => {
